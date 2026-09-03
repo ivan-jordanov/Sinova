@@ -1,0 +1,23 @@
+sinova-backend/
+├── app/
+│   ├── main.py                  # FastAPI application entry point, CORS middleware, and lifecycle handlers.
+│   ├── api/
+│   │   ├── dependencies.py      # Shared API dependencies (e.g., global state locks, memory map handles).
+│   │   └── v1/                  # Versioned API routes mapping frontend requests to processing services.
+│   │       ├── ingestion.py     # Endpoints for dataset scanning, metadata extraction, and initializing memmaps.
+│   │       ├── preprocessing.py # Endpoints for dark/flat normalization, -log transform, and COR alignment.
+│   │       ├── destriping.py    # Endpoints for classical (TomoPy) and PyTorch neural destriping.
+│   │       └── export.py        # Endpoints for saving processed sinograms to HDF5 or 16-bit TIFF stacks.
+│   ├── core/
+│   │   └── config.py            # Application settings, path resolution, buffer limits, and environment variables.
+│   ├── services/                # Pure Python/NumPy/TomoPy logic decoupled from HTTP/API mechanics.
+│   │   ├── io_service.py        # Readers for .mraw, HDF5, and multi-page TIFF files using zero-copy memory mapping.
+│   │   ├── mask_service.py      # Spatial Field-of-View (FOV) masking and dynamic boundary cropping algorithms.
+│   │   ├── cor_service.py       # Center of Rotation (COR) automated detection (Vo's method, phase cross-correlation).
+│   │   ├── classical_filter.py  # Wrapper calls for TomoPy Fourier-Wavelet, Vo's sorting, and ring artifact removal.
+│   │   └── neural_engine.py     # PyTorch model loader, GPU/CPU device allocation, and slice-by-slice inference.
+│   └── schemas/                 # Strict Pydantic models enforcing API data validation.
+│       ├── requests.py          # Data validation for incoming UI controls (slider inputs, algorithm toggles).
+│       └── responses.py         # Structured JSON models for slice metadata, line-profile arrays, and status flags.
+├── tests/                       # Unit and integration test suite (pytest) for I/O pipelines and filters.
+└── requirements.txt             # Python dependencies and locked versions for the backend environment.
