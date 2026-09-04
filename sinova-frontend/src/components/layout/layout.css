@@ -1,0 +1,146 @@
+.app-header {
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  letter-spacing: 0.18em;
+}
+.brand span {
+  color: #36d6e5;
+  margin-left: 4px;
+}
+.workspace {
+  min-height: calc(100vh - 106px);
+  padding-top: 24px;
+}
+.workspace-splitter {
+  min-height: calc(100vh - 130px);
+  background: var(--surface-0);
+}
+.panel {
+  height: 100%;
+  border-right: 1px solid var(--border);
+  padding: 22px 18px;
+  background: var(--surface-1);
+}
+.viewer-panel {
+  background: var(--surface-0);
+  min-width: 0;
+  overflow: hidden;
+}
+.inspector-panel {
+  border-right: 0;
+}
+.eyebrow {
+  color: var(--muted);
+  font:
+    500 10px "DM Mono",
+    monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.bottom-bar {
+  min-height: 50px;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+}
+.status-line {
+  height: 32px;
+  padding: 0 18px;
+  background: var(--surface-2);
+}
+.live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #37d7c2;
+  box-shadow: 0 0 10px #37d7c2;
+}
+.viewer-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+}
+.viewer-canvas {
+  width: 760px;
+  margin-inline: auto;
+}
+.plot-wrap {
+  position: relative;
+  width: 760px;
+  height: 430px;
+  flex: 0 0 760px;
+  border: 1px solid var(--border);
+  background: radial-gradient(
+    circle at 50% 35%,
+    var(--plot-glow),
+    var(--surface-0) 65%
+  );
+}
+.viewer-caption {
+  position: absolute;
+  left: 12px;
+  bottom: 8px;
+  font:
+    10px "DM Mono",
+    monospace;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+.line-profile {
+  width: 760px;
+  margin-top: 18px;
+  height: 76px;
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(
+      170deg,
+      transparent 48%,
+      rgba(50, 214, 228, 0.3) 49%,
+      transparent 51%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent 18px,
+      var(--grid-line) 19px
+    );
+}
+.line-profile .eyebrow {
+  padding: 8px 10px;
+}
+@media (max-width: 1050px) {
+  .workspace-splitter {
+    min-height: auto;
+  }
+  .inspector-panel {
+    border-top: 1px solid var(--border);
+  }
+  .bottom-bar {
+    flex-wrap: wrap;
+    padding-block: 10px;
+  }
+}
+@media (max-width: 700px) {
+  .workspace {
+    padding-top: 14px;
+  }
+  .workspace-splitter {
+    display: block;
+  }
+  .panel {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .operations-panel {
+    display: none;
+  }
+  .app-header {
+    padding-inline: 12px;
+  }
+  .app-header > .mantine-Group:first-child > .mantine-Text:nth-child(2) {
+    display: none;
+  }
+}
