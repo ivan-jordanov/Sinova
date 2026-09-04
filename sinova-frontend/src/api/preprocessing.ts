@@ -1,4 +1,5 @@
 import type { PreviewRequest, PreviewResult } from "../types/preview";
+import { apiClient } from "./client";
 import { getProjectionPreview, getSinogramPreview } from "./preview";
 export async function previewProcessing(
   request: PreviewRequest,
@@ -8,7 +9,15 @@ export async function previewProcessing(
     : getSinogramPreview(request);
 }
 export async function applyToStack(
-  _request: PreviewRequest,
-): Promise<{ jobId: string }> {
-  return { jobId: "mock-job" };
+  request: PreviewRequest,
+): Promise<{ jobId: string; status: string; message: string }> {
+  const response = await apiClient.request<{ job_id: string; status: string; message: string }>(
+    "/preprocessing/apply",
+    { method: "POST", body: JSON.stringify({ configuration: request.configuration }) },
+  );
+  return { jobId: response.job_id, status: response.status, message: response.message };
+}
+
+export function getProcessingStatus() {
+  return apiClient.request<{ status: string; job_id: string | null; message: string }>("/preprocessing/status");
 }

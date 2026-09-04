@@ -2,8 +2,11 @@ import { Button, Group, Modal, Text } from "@mantine/core";
 interface Props {
   opened: boolean;
   onClose: () => void;
+  onApply: () => void;
+  isPending: boolean;
+  message?: string;
 }
-export function ApplyStackDialog({ opened, onClose }: Props) {
+export function ApplyStackDialog({ opened, onClose, onApply, isPending, message }: Props) {
   return (
     <Modal
       opened={opened}
@@ -18,8 +21,9 @@ export function ApplyStackDialog({ opened, onClose }: Props) {
         <Button variant="default" onClick={onClose}>
           Cancel
         </Button>
-        <Button onClick={onClose}>Apply to entire stack</Button>
+        <Button onClick={onApply} loading={isPending}>Apply to entire stack</Button>
       </Group>
+      {message && <Text size="xs" c="teal" mt="md">{message}</Text>}
     </Modal>
   );
 }

@@ -2,9 +2,12 @@ import { Button, Group, Text } from "@mantine/core";
 import { useState } from "react";
 import { usePreprocessingStore } from "../../store/preprocessingStore";
 import { ApplyStackDialog } from "../session/ApplyStackDialog";
+import { useApplyPreprocessing } from "../../hooks/useApplyPreprocessing";
 export function BottomBar() {
   const [opened, setOpened] = useState(false);
-  const { session, past, future, undo, redo } = usePreprocessingStore();
+  const { operations, session, past, future, undo, redo } = usePreprocessingStore();
+  const apply = useApplyPreprocessing();
+  const request = { context: "sinogram" as const, slice: session.selectedSlice, configuration: { operations }, mode: "current" as const };
   return (
     <>
       <Group className="bottom-bar" justify="space-between" px="lg">
@@ -44,7 +47,7 @@ export function BottomBar() {
           </Button>
         </Group>
       </Group>
-      <ApplyStackDialog opened={opened} onClose={() => setOpened(false)} />
+      <ApplyStackDialog opened={opened} onClose={() => setOpened(false)} onApply={() => apply.mutate(request)} isPending={apply.isPending} message={apply.data?.message ?? apply.error?.message} />
     </>
   );
 }

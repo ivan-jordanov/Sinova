@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getDatasetMetadata } from "../../api/dataset";
 import { useDatasetStore } from "../../store/datasetStore";
 import { usePreprocessingStore } from "../../store/preprocessingStore";
+import { useBackendHealth } from "../../hooks/useBackendHealth";
 export function Header() {
   const fallbackDataset = useDatasetStore((state) => state.metadata);
   // React Query caches this request and exposes loading/error states when the API
@@ -19,6 +20,7 @@ export function Header() {
     queryKey: ["dataset", "metadata"],
     queryFn: getDatasetMetadata,
   });
+  const backendHealth = useBackendHealth();
   // This is local configuration history, so it does not belong in React Query.
   const { past, future, undo, redo } = usePreprocessingStore();
   const { setColorScheme } = useMantineColorScheme();
@@ -33,8 +35,8 @@ export function Header() {
         <Text size="sm" c="dimmed">
           Dataset <b>{dataset.name}</b>
         </Text>
-        <Badge color="teal" variant="light">
-          GPU · READY
+        <Badge color={backendHealth.isSuccess ? "teal" : "yellow"} variant="light">
+          API · {backendHealth.isSuccess ? "READY" : "OFFLINE"}
         </Badge>
       </Group>
       <Group gap="xs">

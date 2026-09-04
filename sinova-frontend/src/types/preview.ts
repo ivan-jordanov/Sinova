@@ -11,4 +11,5 @@ export interface PreviewResult {
   height: number;
   data: ArrayBuffer;
   requestId: string;
+  message: string;
 }
