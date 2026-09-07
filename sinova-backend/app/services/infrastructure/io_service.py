@@ -1,4 +1,4 @@
-"""Dataset I/O boundary reserved for MRAW, TIFF, and HDF5 readers."""
+"""Shared path validation for supported dataset readers."""
 from pathlib import Path
 
 from app.core.config import settings

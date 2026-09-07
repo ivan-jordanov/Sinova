@@ -1,13 +1,30 @@
 import { create } from "zustand";
 import type { DatasetMetadata } from "../types/dataset";
-import { mockDataset } from "../api/mockData";
 interface DatasetState {
-  metadata: DatasetMetadata;
-  loading: boolean;
-  available: boolean;
+  metadata: DatasetMetadata | null;
+  selectedFile: File | null;
+  // Declare the action on the state interface
+  setDataset: (file: File) => void;
+  clearDataset: () => void;
 }
-export const useDatasetStore = create<DatasetState>(() => ({
-  metadata: mockDataset,
-  loading: false,
-  available: true,
+
+export const useDatasetStore = create<DatasetState>((set) => ({
+  metadata: null,
+  selectedFile: null,
+
+  setDataset: (file: File) =>
+    set({
+      selectedFile: file,
+      metadata: {
+        name: file.name,
+        // Stores path if running under Electron, or fallback name
+        path: (file as File & { path?: string }).path || file.name,
+      },
+    }),
+
+  clearDataset: () =>
+    set({
+      metadata: null,
+      selectedFile: null,
+    }),
 }));

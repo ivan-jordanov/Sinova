@@ -3,11 +3,29 @@ import { useState } from "react";
 import { usePreprocessingStore } from "../../store/preprocessingStore";
 import { ApplyStackDialog } from "../session/ApplyStackDialog";
 import { useApplyPreprocessing } from "../../hooks/useApplyPreprocessing";
+import { useJobStatus } from "../../hooks/useJobStatus";
+
 export function BottomBar() {
   const [opened, setOpened] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
   const { operations, session, past, future, undo, redo } = usePreprocessingStore();
   const apply = useApplyPreprocessing();
-  const request = { context: "sinogram" as const, slice: session.selectedSlice, configuration: { operations }, mode: "current" as const };
+  const jobStatus = useJobStatus(jobId);
+
+  const handleApply = () => {
+    apply.mutate(
+      { configuration: { operations } },
+      {
+        onSuccess: (response) => {
+          setJobId(response.id);
+          setOpened(false);
+        },
+      },
+    );
+  };
+
+  const message = jobStatus.data?.message || apply.data?.message || apply.error?.message;
+
   return (
     <>
       <Group className="bottom-bar" justify="space-between" px="lg">
@@ -22,6 +40,11 @@ export function BottomBar() {
           {session.dirty && (
             <Text size="xs" c="yellow">
               UNSAVED
+            </Text>
+          )}
+          {jobStatus.data && (
+            <Text size="xs" c="blue">
+              Job: {jobStatus.data.status} ({jobStatus.data.progress}%)
             </Text>
           )}
         </Group>
@@ -42,12 +65,18 @@ export function BottomBar() {
           >
             Redo
           </Button>
-          <Button size="xs" onClick={() => setOpened(true)}>
+          <Button size="xs" onClick={() => setOpened(true)} disabled={!!jobId}>
             Apply to entire stack ↗
           </Button>
         </Group>
       </Group>
-      <ApplyStackDialog opened={opened} onClose={() => setOpened(false)} onApply={() => apply.mutate(request)} isPending={apply.isPending} message={apply.data?.message ?? apply.error?.message} />
+      <ApplyStackDialog
+        opened={opened}
+        onClose={() => setOpened(false)}
+        onApply={handleApply}
+        isPending={apply.isPending}
+        message={message}
+      />
     </>
   );
 }

@@ -1,21 +1,38 @@
-import type { PreviewRequest, PreviewResult } from "../types/preview";
 import { apiClient } from "./client";
-import { getProjectionPreview, getSinogramPreview } from "./preview";
-export async function previewProcessing(
-  request: PreviewRequest,
-): Promise<PreviewResult> {
-  return request.context === "projection"
-    ? getProjectionPreview(request)
-    : getSinogramPreview(request);
+
+export interface JobStatus {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  progress: number;
+  message: string;
+  current_operation: string | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
 }
-export async function applyToStack(
-  request: PreviewRequest,
-): Promise<{ jobId: string; status: string; message: string }> {
-  const response = await apiClient.request<{ job_id: string; status: string; message: string }>(
-    "/preprocessing/apply",
-    { method: "POST", body: JSON.stringify({ configuration: request.configuration }) },
-  );
-  return { jobId: response.job_id, status: response.status, message: response.message };
+
+export async function applyToStack(request: {
+  configuration: unknown;
+}): Promise<JobStatus> {
+  return apiClient.request<JobStatus>("/preprocessing/apply", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export async function getJobStatus(jobId: string): Promise<JobStatus> {
+  return apiClient.request<JobStatus>(`/preprocessing/status/${jobId}`);
+}
+
+export async function cancelJob(jobId: string): Promise<JobStatus> {
+  return apiClient.request<JobStatus>(`/preprocessing/cancel/${jobId}`, {
+    method: "POST",
+  });
+}
+
+export async function getAvailableOperations() {
+  return apiClient.request<unknown[]>("/preprocessing/operations");
 }
 
 export function getProcessingStatus() {

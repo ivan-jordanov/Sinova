@@ -84,7 +84,23 @@ class ApplyPreprocessingRequest(BaseModel):
     configuration: PreprocessingConfiguration
 
 
+class JobStatus(BaseModel):
+    """Response for job status queries."""
+
+    id: str
+    status: Literal["queued", "running", "completed", "failed", "cancelled"]
+    progress: int = Field(ge=0, le=100)
+    message: str = ""
+    current_operation: str | None = None
+    error: str | None = None
+    created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+
+
 class ProcessingStatus(BaseModel):
+    """Deprecated: Use JobStatus instead. Kept for compatibility."""
+
     status: Literal["idle", "queued", "processing", "completed", "failed"]
     job_id: str | None = None
     message: str

@@ -1,33 +1,49 @@
 import type { DatasetMetadata } from "../types/dataset";
 import { apiClient } from "./client";
-import { mockDataset } from "./mockData";
+import {BackendDatasetMetadata} from "../types/datasetBackend";
 
-interface BackendDatasetMetadata {
-  name: string;
-  detector_width: number;
-  detector_height: number;
-  projections: number;
-  slices: number;
-  format: string;
+// Helper mapper to transform snake_case backend response to camelCase frontend model
+function mapMetadata(data: BackendDatasetMetadata): DatasetMetadata {
+  return {
+    name: data.name,
+    detectorWidth: data.detector_width,
+    detectorHeight: data.detector_height,
+    projections: data.projections,
+    slices: data.slices,
+    format: data.format,
+  };
 }
 
+/**
+ * Loads a dataset from a given file path.
+ * Calls POST /load with { path: filePath } and returns the dataset metadata.
+ */
+export async function loadDataset(filePath: string): Promise<DatasetMetadata> {
+  const data = await apiClient.request<BackendDatasetMetadata>("/load", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path: filePath }),
+  });
+
+  return mapMetadata(data);
+}
+
+/**
+ * Retrieves metadata for the currently active/loaded dataset.
+ * Calls GET /ingestion/metadata.
+ */
 export async function getDatasetMetadata(): Promise<DatasetMetadata> {
-  try {
-    const data = await apiClient.request<BackendDatasetMetadata>("/ingestion/metadata");
-    return {
-      name: data.name,
-      detectorWidth: data.detector_width,
-      detectorHeight: data.detector_height,
-      projections: data.projections,
-      slices: data.slices,
-      format: data.format,
-    };
-  } catch {
-    return mockDataset;
-  }
+  const data = await apiClient.request<BackendDatasetMetadata>("/ingestion/metadata");
+  return mapMetadata(data);
 }
 
-export interface BackendHealth { status: string; service: string }
+export interface BackendHealth {
+  status: string;
+  service: string;
+}
+
 export function getBackendHealth() {
   return apiClient.request<BackendHealth>("/health");
 }

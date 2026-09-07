@@ -1,1 +1,1 @@
-"""Domain services kept independent from HTTP route handlers."""
+"""Backend service layers grouped by responsibility."""
