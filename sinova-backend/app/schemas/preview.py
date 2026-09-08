@@ -1,3 +1,4 @@
+
 from pydantic import BaseModel, Field
 
 from .preprocessing import DataContext, PreprocessingConfiguration
@@ -11,11 +12,13 @@ class PreviewRequest(BaseModel):
 
 
 class PreviewResponse(BaseModel):
-    context: DataContext
+    context: str
     width: int = Field(gt=0)
     height: int = Field(gt=0)
     data_format: str
     dtype: str
     data: list[float]
+    min_value: float | None = None
+    max_value: float | None = None
     request_id: str
     message: str

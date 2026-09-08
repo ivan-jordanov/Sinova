@@ -1,8 +1,8 @@
 """DICOM image and DICOM series reader."""
 from pathlib import Path
-
 import numpy as np
 import pydicom
+from pydicom.errors import InvalidDicomError
 
 from app.services.infrastructure.dataset_reader import DatasetMetadata
 
@@ -37,13 +37,12 @@ class DICOMReader:
             cache_dir = self.path if self.path.is_dir() else self.path.parent
             cache_file = cache_dir / "_dicom_memmap.dat"
 
-            # Will need to warn the user that this file will be created and may be large
             print(f"Creating temporary file-backed memmap: {cache_file}")
             self._volume = np.memmap(
                 cache_file,
                 dtype=self.dtype,
                 mode="w+",
-                shape=(self.projection_count, self.height, self.width)
+                shape=(self.projection_count, self.height, self.width),
             )
 
             for i, filepath in enumerate(self.files):
@@ -61,57 +60,48 @@ class DICOMReader:
             format="DICOM",
             width=self.width,
             height=self.height,
-            dtype=str(self.dtype),
+            dtype=self.dtype_str,
             projection_count=self.projection_count,
             detector_height=self.height,
             detector_width=self.width,
+            slices=self.projection_count
         )
 
     def load_projection(self, frame_index: int) -> np.ndarray:
         self._validate_frame_index(frame_index)
-        return np.array(self._frames[frame_index], copy=True)
+        return np.asarray(self._volume[frame_index]).copy()
 
     def load_sinogram(self, slice_index: int) -> np.ndarray:
         self._validate_slice_index(slice_index)
-        return np.array(self._frames[:, slice_index, :], copy=True)
+        return np.asarray(self._volume[:, slice_index, :]).copy()
 
     def _find_files(self) -> list[Path]:
-        if self.path.is_file():
-            return [self.path]
+        search_dir = self.path.parent if self.path.is_file() else self.path
 
-        files = []
-        for candidate in sorted(self.path.iterdir()):
-            if not candidate.is_file():
+        valid_files = []
+        for candidate in search_dir.iterdir():
+            if not candidate.is_file() or candidate.name.startswith("_"):
                 continue
+
             try:
-                self._pydicom.dcmread(candidate, stop_before_pixels=True)
-            except Exception:
+                self._pydicom.dcmread(str(candidate), stop_before_pixels=True)
+                valid_files.append(candidate)
+            except InvalidDicomError:
                 continue
-            files.append(candidate)
 
-        if not files:
-            raise ValueError(f"No readable DICOM files found in {self.path}")
+        if not valid_files:
+            raise FileNotFoundError(f"No valid DICOM files found in {search_dir}")
 
-        return sorted(files, key=self._instance_number)
+        # Sort files by actual DICOM InstanceNumber to guarantee correct slice ordering
+        valid_files.sort(key=self._instance_number)
+        return valid_files
 
     def _instance_number(self, path: Path) -> int:
-        dataset = self._pydicom.dcmread(path, stop_before_pixels=True)
-        return int(getattr(dataset, "InstanceNumber", 0))
-
-    def _load_frames(self) -> np.ndarray:
-        frames = []
-        for path in self.files:
-            pixel_array = np.asarray(self._pydicom.dcmread(path).pixel_array)
-            if pixel_array.ndim == 2:
-                frames.append(pixel_array)
-            elif pixel_array.ndim == 3:
-                frames.extend(pixel_array)
-            else:
-                raise ValueError(f"Unsupported DICOM pixel dimensions in {path}")
-
-        if not frames:
-            raise ValueError(f"No pixel data found in {self.path}")
-        return np.stack(frames, axis=0)
+        try:
+            dataset = self._pydicom.dcmread(str(path), stop_before_pixels=True)
+            return int(getattr(dataset, "InstanceNumber", 0))
+        except Exception:
+            return 0
 
     def _validate_frame_index(self, frame_index: int) -> None:
         if not 0 <= frame_index < self.projection_count:

@@ -4,6 +4,7 @@ Dataset access service.
 Provides a unified interface for loading dataset metadata and data.
 Format-specific details stay inside infrastructure readers.
 """
+from pathlib import Path
 import numpy as np
 
 from app.services.infrastructure.dat_reader import DATReader
@@ -39,7 +40,7 @@ class DatasetService:
         Load a dataset from disk.
 
         Args:
-            file_path: Path to the dataset file
+            file_path: Path to the dataset file or directory
 
         Returns:
             Dataset metadata
@@ -48,16 +49,20 @@ class DatasetService:
             ValueError: If path is invalid or file format is not supported
             FileNotFoundError: If file does not exist
         """
-        # Validate path (security check, size check, existence check)
         validated_path = validate_path(file_path)
-
-        # Determine format from extension
-        suffix = validated_path.suffix.lower()
-
         reader_type = self._reader_type(validated_path)
+
         self._close_reader()
-        self.reader = reader_type(str(validated_path))
-        self.metadata = self.reader.get_metadata()
+
+        try:
+            reader = reader_type(str(validated_path))
+            metadata = reader.get_metadata()
+        except Exception:
+            self._close_reader()
+            raise
+
+        self.reader = reader
+        self.metadata = metadata
         self.current_path = str(validated_path)
 
         return self.metadata
@@ -120,13 +125,19 @@ class DatasetService:
         return self.reader is not None and self.metadata is not None
 
     def _close_reader(self) -> None:
+        """Close current reader resource and reset state."""
         if self.reader is not None:
             close = getattr(self.reader, "close", None)
-            if close is not None:
+            if callable(close):
                 close()
 
+        self.reader = None
+        self.metadata = None
+        self.current_path = None
+
     @staticmethod
-    def _reader_type(path):
+    def _reader_type(path: Path) -> type[DatasetReader]:
+        """Resolve reader type from file path or directory structure."""
         if path.is_dir():
             return DICOMReader
 
@@ -138,14 +149,16 @@ class DatasetService:
             ".dcm": DICOMReader,
             ".dicom": DICOMReader,
         }
-        try:
-            return readers[path.suffix.lower()]
-        except KeyError as error:
-            supported = ", ".join(sorted(readers))
-            raise ValueError(
-                f"Unsupported format: {path.suffix or path.name}. "
-                f"Supported formats: {supported} and DICOM directories"
-            ) from error
+
+        suffix = path.suffix.lower()
+        if suffix in readers:
+            return readers[suffix]
+
+        supported = ", ".join(sorted(readers.keys()))
+        raise ValueError(
+            f"Unsupported format: {suffix or path.name}. "
+            f"Supported formats: {supported} and DICOM directories"
+        )
 
 
 # Global dataset service instance

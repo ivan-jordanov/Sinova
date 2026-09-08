@@ -1,5 +1,11 @@
 from pydantic import BaseModel, Field
 
+class BrowseResponse(BaseModel):
+    path: str
+
+
+class LoadDatasetRequest(BaseModel):
+    path: str
 
 class DatasetMetadata(BaseModel):
     name: str
@@ -17,3 +23,5 @@ class LoadDatasetRequest(BaseModel):
 class LoadDatasetResponse(BaseModel):
     loaded: bool
     metadata: DatasetMetadata
+    
+    

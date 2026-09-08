@@ -7,15 +7,24 @@ import { LineProfile } from "../viewer/LineProfile";
 import { SliceSelector } from "../session/SliceSelector";
 import { usePreview } from "../../hooks/usePreview";
 import { usePreprocessingStore } from "../../store/preprocessingStore";
+import { useDatasetStore } from "../../store/datasetStore";
+
 export function ViewerPanel() {
   const { context, setContext } = useViewerStore();
-  const { operations, session } = usePreprocessingStore();
-  const preview = usePreview({
-    context,
-    slice: session.selectedSlice,
-    configuration: { operations },
-    mode: "current",
-  });
+  const operations = usePreprocessingStore((state) => state.operations);
+  const selectedSlice = usePreprocessingStore((state) => state.session.selectedSlice);
+  const metadata = useDatasetStore((state) => state.metadata);
+
+  const preview = usePreview(
+    {
+      context,
+      slice: selectedSlice,
+      configuration: { operations },
+      mode: "current",
+    },
+    Boolean(metadata) // Runs only when dataset metadata exists
+  );
+
   return (
     <Box className="panel viewer-panel">
       <Group justify="space-between" mb="md">
@@ -25,6 +34,7 @@ export function ViewerPanel() {
         </div>
         <SliceSelector />
       </Group>
+
       <Tabs
         value={context}
         onChange={(value) =>
@@ -37,12 +47,33 @@ export function ViewerPanel() {
           <Tabs.Tab value="sinogram">Sinogram</Tabs.Tab>
         </Tabs.List>
       </Tabs>
+
       <ViewerToolbar />
+
       <Box className="viewer-scroll">
-        {preview.isError && <Text size="xs" c="red">Preview request failed: backend unavailable.</Text>}
-        {preview.data && <Text size="xs" c="teal" mb="xs">{preview.data.message}</Text>}
+        {preview.isError && (
+          <Text size="xs" c="red">
+            Preview request failed: backend unavailable.
+          </Text>
+        )}
+        {preview.data && (
+          <Text size="xs" c="teal" mb="xs">
+            {preview.data.message}
+          </Text>
+        )}
+
         <Box className="viewer-canvas">
-          {context === "projection" ? <ProjectionViewer /> : <SinogramViewer />}
+          {context === "projection" ? (
+            <ProjectionViewer
+              data={preview.data}
+              isLoading={preview.isLoading}
+            />
+          ) : (
+            <SinogramViewer
+              data={preview.data}
+              isLoading={preview.isLoading}
+            />
+          )}
           <LineProfile />
         </Box>
       </Box>

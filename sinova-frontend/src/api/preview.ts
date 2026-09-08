@@ -1,19 +1,33 @@
 import type { PreviewRequest, PreviewResult } from "../types/preview";
 import { apiClient } from "./client";
+import type { PreviewParams } from "../types/preview";
 
-// The mock keeps the ArrayBuffer boundary used by the future FastAPI endpoint.
 export async function getProjectionPreview(
-  request: PreviewRequest,
+  params: PreviewParams
 ): Promise<PreviewResult> {
-  return requestPreview("/preview/projection", request);
-}
-export async function getSinogramPreview(
-  request: PreviewRequest,
-): Promise<PreviewResult> {
-  return requestPreview("/preview/sinogram", request);
+  return requestPreview("/preview/projection", {
+    context: "projection",
+    mode: params.mode ?? "original",
+    slice: params.slice,
+    configuration: params.configuration,
+  });
 }
 
-async function requestPreview(path: string, request: PreviewRequest): Promise<PreviewResult> {
+export async function getSinogramPreview(
+  params: PreviewParams
+): Promise<PreviewResult> {
+  return requestPreview("/preview/sinogram", {
+    context: "sinogram",
+    mode: params.mode ?? "original",
+    slice: params.slice,
+    configuration: params.configuration,
+  });
+}
+
+export async function requestPreview(
+  path: string,
+  request: PreviewRequest
+): Promise<PreviewResult> {
   const response = await apiClient.request<{
     context: "projection" | "sinogram";
     width: number;
@@ -21,14 +35,19 @@ async function requestPreview(path: string, request: PreviewRequest): Promise<Pr
     data_format: string;
     dtype: string;
     data: number[];
+    min_value?: number;
+    max_value?: number;
     request_id: string;
     message: string;
   }>(path, { method: "POST", body: JSON.stringify(request) });
+
   return {
     context: response.context,
     width: response.width,
     height: response.height,
-    data: new Float32Array(response.data).buffer,
+    data: new Float32Array(response.data),
+    minVal: response.min_value,
+    maxVal: response.max_value,
     requestId: response.request_id,
     message: `${response.message} (${response.data_format}, ${response.dtype})`,
   };

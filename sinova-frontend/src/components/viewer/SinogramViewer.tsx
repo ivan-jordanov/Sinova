@@ -1,43 +1,51 @@
+import { useMemo } from "react";
 import Plot from "react-plotly.js";
-import { Box, Text } from "@mantine/core";
-const values = Array.from({ length: 42 }, (_, row) =>
-  Array.from(
-    { length: 90 },
-    (_, column) =>
-      Math.sin(column / 12) * 0.28 +
-      Math.cos(row / 8) * 0.24 +
-      Math.sin((row + column) / 17) * 0.08,
-  ),
-);
-export function SinogramViewer() {
+import { Box, LoadingOverlay, Text } from "@mantine/core";
+import type { PreviewResult } from "../../types/preview";
+import flatTo2DMatrix from "../../utils/matrix";
+
+interface SinogramViewerProps {
+  data?: PreviewResult;
+  isLoading: boolean;
+}
+
+export function SinogramViewer({ data, isLoading }: SinogramViewerProps) {
+  const matrix2D = useMemo(() => {
+    if (!data) return [];
+    return flatTo2DMatrix(data.data, data.width, data.height);
+  }, [data]);
+
   return (
-    <Box className="plot-wrap">
-      {/* Plotly receives a matrix through z: rows are detector slices and columns
-          are projection positions. heatmapgl keeps large matrices GPU-friendly. */}
-      <Plot
-        data={[
-          {
-            z: values,
-            type: "heatmapgl",
-            colorscale: "Viridis",
-            showscale: false,
-          },
-        ]}
-        layout={{
-          autosize: true,
-          margin: { l: 38, r: 8, t: 8, b: 28 },
-          paper_bgcolor: "transparent",
-          plot_bgcolor: "transparent",
-          xaxis: { visible: false },
-          yaxis: { visible: false },
-          font: { color: "#758495" },
-        }}
-        config={{ displayModeBar: false, responsive: true }}
-        useResizeHandler
-        style={{ width: "100%", height: "100%" }}
-      />
+    <Box className="plot-wrap" pos="relative">
+      <LoadingOverlay visible={isLoading} overlayProps={{ blur: 1 }} />
+      {data && (
+        <Plot
+          data={[
+            {
+              z: matrix2D,
+              type: "heatmapgl",
+              colorscale: "Viridis",
+              showscale: false,
+              zmin: data.minVal,
+              zmax: data.maxVal,
+            },
+          ]}
+          layout={{
+            autosize: true,
+            margin: { l: 8, r: 8, t: 8, b: 8 },
+            paper_bgcolor: "transparent",
+            plot_bgcolor: "transparent",
+            xaxis: { visible: false },
+            yaxis: { visible: false, autorange: "reversed" },
+            font: { color: "#758495" },
+          }}
+          config={{ displayModeBar: false, responsive: true }}
+          useResizeHandler
+          style={{ width: "100%", height: "100%" }}
+        />
+      )}
       <Text className="viewer-caption">
-        SINOGRAM · MOCK PREVIEW · 2048 × 1800
+        SINOGRAM · {data ? `${data.width} × ${data.height}` : "LOADING"}
       </Text>
     </Box>
   );

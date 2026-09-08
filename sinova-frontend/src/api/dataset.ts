@@ -1,6 +1,6 @@
 import type { DatasetMetadata } from "../types/dataset";
 import { apiClient } from "./client";
-import {BackendDatasetMetadata} from "../types/datasetBackend";
+import type { BackendDatasetMetadata } from "../types/datasetBackend.ts";
 
 // Helper mapper to transform snake_case backend response to camelCase frontend model
 function mapMetadata(data: BackendDatasetMetadata): DatasetMetadata {
@@ -14,12 +14,21 @@ function mapMetadata(data: BackendDatasetMetadata): DatasetMetadata {
   };
 }
 
+export async function browseDatasetFile(): Promise<string> {
+  const response = await apiClient.request<{ path: string }>("/ingestion/browse", {
+    method: "POST",
+  });
+  return response.path;
+}
+
 /**
  * Loads a dataset from a given file path.
  * Calls POST /load with { path: filePath } and returns the dataset metadata.
  */
+// Triggers native Tkinter file picker on the local host machine
+// Submits the full path string to the existing backend ingestion route
 export async function loadDataset(filePath: string): Promise<DatasetMetadata> {
-  const data = await apiClient.request<BackendDatasetMetadata>("/load", {
+  const data = await apiClient.request<BackendDatasetMetadata>("/ingestion/load", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

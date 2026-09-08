@@ -1,6 +1,10 @@
 from fastapi import APIRouter, HTTPException
+import tkinter as tk
+from tkinter import filedialog
+from pathlib import Path
 
 from app.schemas.dataset import (
+    BrowseResponse,
     DatasetMetadata,
     LoadDatasetRequest,
     LoadDatasetResponse,
@@ -10,36 +14,54 @@ from app.services.infrastructure.io_service import validate_path
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
+@router.post("/browse", response_model=BrowseResponse)
+def browse_file() -> BrowseResponse:
+    """
+    Triggers a native OS file picker dialog on the host server machine
+    and returns the selected full file path.
+    """
+    try:
+        root = tk.Tk()
+        root.withdraw()  # Hide the main Tkinter window
+        root.attributes("-topmost", True)  # Bring file dialog to the front
+
+        selected_path = filedialog.askopenfilename(
+            title="Select Dataset File",
+            filetypes=[
+                ("Dataset Files", "*.dat *.dicom *.tif *.tiff *.mraw"),
+                ("All Files", "*.*"),
+            ],
+        )
+        root.destroy()
+
+        if not selected_path:
+            raise HTTPException(status_code=400, detail="No file selected")
+
+        # Convert backslashes to standard forward slashes or resolved path string
+        clean_path = str(Path(selected_path).resolve())
+
+        return BrowseResponse(path=clean_path)
+
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(
+            status_code=500, detail=f"Failed to open OS file picker: {str(e)}"
+        )
 
 @router.post("/load", response_model=LoadDatasetResponse)
 def load(request: LoadDatasetRequest) -> LoadDatasetResponse:
-    """
-    Load a dataset file and return its metadata.
-
-    Validates the file path, then reads metadata without loading
-    the entire file into memory.
-
-    Args:
-        request: Contains file_path to load
-
-    Returns:
-        Metadata about the loaded dataset
-
-    Raises:
-        HTTPException 400: If path is invalid or file format unsupported
-    """
     try:
-        # Validate path (security + existence checks)
-        validate_path(request.path)
+        # 1. Run validation and keep the returned resolved Path
+        validated_path = validate_path(request.path)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     try:
-        # Load dataset and get metadata
+        # 2. Pass the validated Path (or string) to dataset_service
         dataset_service = get_dataset_service()
-        metadata = dataset_service.load_dataset(request.path)
+        metadata = dataset_service.load_dataset(str(validated_path))
 
-        # Convert metadata to response format (snake_case to camelCase)
         return LoadDatasetResponse(
             loaded=True,
             metadata=DatasetMetadata(
@@ -47,7 +69,7 @@ def load(request: LoadDatasetRequest) -> LoadDatasetResponse:
                 detector_width=metadata["detector_width"],
                 detector_height=metadata["detector_height"],
                 projections=metadata["projection_count"],
-                slices=metadata["detector_height"],  # For sinogram slices
+                slices=metadata["slices"],
                 format=metadata["format"],
             ),
         )

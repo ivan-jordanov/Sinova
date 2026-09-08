@@ -4,6 +4,7 @@ import type {
   PreprocessingOperation,
   PreviewSession,
 } from "../types/preprocessing";
+
 interface PreprocessingState {
   operations: PreprocessingOperation[];
   selectedOperationId: string;
@@ -20,20 +21,21 @@ interface PreprocessingState {
   undo: () => void;
   redo: () => void;
   selectSlice: (slice: number) => void;
+  setTotalSlices: (totalSlices: number) => void;
   resetConfiguration: () => void;
   markClean: () => void;
 }
+
 const clone = (operations: PreprocessingOperation[]) =>
   operations.map((operation) => ({
     ...operation,
     parameters: { ...operation.parameters },
   }));
 
-// History stores configuration snapshots only; image data never enters Zustand.
 const matchesInitial = (operations: PreprocessingOperation[]) =>
   JSON.stringify(operations) === JSON.stringify(initialOperations);
+
 export const usePreprocessingStore = create<PreprocessingState>((set) => {
-  // Each committed edit creates one undo step and clears the redo branch.
   const commit = (
     operations: PreprocessingOperation[],
     state: PreprocessingState,
@@ -43,12 +45,13 @@ export const usePreprocessingStore = create<PreprocessingState>((set) => {
     future: [],
     session: { ...state.session, dirty: !matchesInitial(operations) },
   });
+
   return {
     operations: clone(initialOperations),
     selectedOperationId: "normalization",
     session: {
-      selectedSlice: 500,
-      totalSlices: 2048,
+      selectedSlice: 0,
+      totalSlices: 0,
       dirty: false,
       previewMode: true,
     },
@@ -110,8 +113,16 @@ export const usePreprocessingStore = create<PreprocessingState>((set) => {
           ...state.session,
           selectedSlice: Math.max(
             0,
-            Math.min(selectedSlice, state.session.totalSlices - 1),
+            Math.min(selectedSlice, Math.max(0, state.session.totalSlices - 1)),
           ),
+        },
+      })),
+    setTotalSlices: (totalSlices) =>
+      set((state) => ({
+        session: {
+          ...state.session,
+          totalSlices,
+          selectedSlice: Math.floor(totalSlices / 2),
         },
       })),
     resetConfiguration: () =>
