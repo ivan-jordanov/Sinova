@@ -29,7 +29,7 @@ def browse_file() -> BrowseResponse:
         selected_path = filedialog.askopenfilename(
             title="Select Dataset File",
             filetypes=[
-                ("Dataset Files", "*.dat *.dicom *.tif *.tiff *.mraw"),
+                ("Dataset Files", "*.dat *.dicom *.dcm *.tif *.tiff *.mraw"),
                 ("All Files", "*.*"),
             ],
         )

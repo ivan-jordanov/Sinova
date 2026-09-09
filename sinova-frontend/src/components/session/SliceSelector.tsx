@@ -15,32 +15,40 @@ interface SliceSelectorProps {
 }
 
 export function SliceSelector({ context = "projection" }: SliceSelectorProps) {
-  const { session, selectSlice, resetConfiguration } = usePreprocessingStore();
+  const { session, selectSlice, resetConfiguration, setTotalSlices } =
+    usePreprocessingStore();
   const metadata = useDatasetStore((state) => state.metadata);
 
-  // Resolve active display label and bounds based on viewing mode
   const isProjection = context === "projection";
-  
   const label = isProjection ? "PROJECTION" : "ROW";
-  
+
   const totalItems = isProjection
-    ? (metadata?.projections ?? session.totalSlices)
-    : (metadata?.detectorHeight ?? session.totalSlices);
-
-  const [pendingSlice, setPendingSlice] = useState<number | null>(null);
-  const [localSlice, setLocalSlice] = useState<number | string>(session.selectedSlice);
-
-  useEffect(() => {
-    setLocalSlice(session.selectedSlice);
-  }, [session.selectedSlice]);
+    ? (metadata?.projections ?? 1)
+    : (metadata?.detectorHeight ?? 1);
 
   const maxSlice = Math.max(0, totalItems - 1);
+  const currentSlice = Number(session.selectedSlice) || 0;
+
+  const [pendingSlice, setPendingSlice] = useState<number | null>(null);
+  const [localSlice, setLocalSlice] = useState<number | string>(currentSlice);
+
+  useEffect(() => {
+    setLocalSlice(currentSlice);
+  }, [currentSlice]);
+
+  // Keep the store's totalSlices in sync with whichever context we're
+  // viewing, and reset to the middle slice whenever context/metadata changes.
+  useEffect(() => {
+    if (totalItems > 0) {
+      setTotalSlices(totalItems);
+    }
+  }, [context, totalItems, setTotalSlices]);
 
   const goToSlice = (targetSlice: number) => {
     const clampedSlice = Math.max(0, Math.min(targetSlice, maxSlice));
 
-    if (clampedSlice === session.selectedSlice) {
-      setLocalSlice(session.selectedSlice);
+    if (clampedSlice === currentSlice) {
+      setLocalSlice(currentSlice);
       return;
     }
 
@@ -53,8 +61,9 @@ export function SliceSelector({ context = "projection" }: SliceSelectorProps) {
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
-      const parsed = typeof localSlice === "number" ? localSlice : parseInt(localSlice, 10);
-      goToSlice(isNaN(parsed) ? 0 : parsed);
+      event.preventDefault();
+      const parsed = parseInt(event.currentTarget.value, 10);
+      goToSlice(Number.isNaN(parsed) ? 0 : parsed);
     }
   };
 
@@ -66,7 +75,7 @@ export function SliceSelector({ context = "projection" }: SliceSelectorProps) {
 
   const cancel = () => {
     setPendingSlice(null);
-    setLocalSlice(session.selectedSlice);
+    setLocalSlice(currentSlice);
   };
 
   return (
@@ -79,10 +88,10 @@ export function SliceSelector({ context = "projection" }: SliceSelectorProps) {
           hideControls
           size="xs"
           w={72}
-          value={localSlice}
-          min={0}
-          max={maxSlice}
-          onChange={(val) => setLocalSlice(val)}
+          value={typeof localSlice === "number" ? localSlice + 1 : localSlice}
+          min={1}
+          max={totalItems}
+          onChange={(val) => setLocalSlice(typeof val === "number" ? val - 1 : val)}
           onKeyDown={handleKeyDown}
         />
         <Text size="xs" c="dimmed">
@@ -91,18 +100,18 @@ export function SliceSelector({ context = "projection" }: SliceSelectorProps) {
         <ActionIcon
           size="sm"
           variant="subtle"
-          onClick={() => goToSlice(session.selectedSlice - 1)}
+          onClick={() => goToSlice(currentSlice - 1)}
           aria-label={`Previous ${label.toLowerCase()}`}
-          disabled={session.selectedSlice <= 0}
+          disabled={currentSlice <= 0}
         >
           ‹
         </ActionIcon>
         <ActionIcon
           size="sm"
           variant="subtle"
-          onClick={() => goToSlice(session.selectedSlice + 1)}
+          onClick={() => goToSlice(currentSlice + 1)}
           aria-label={`Next ${label.toLowerCase()}`}
-          disabled={session.selectedSlice >= maxSlice}
+          disabled={currentSlice >= maxSlice}
         >
           ›
         </ActionIcon>

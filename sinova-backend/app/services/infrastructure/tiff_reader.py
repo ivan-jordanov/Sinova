@@ -69,21 +69,22 @@ class TIFFReader:
         """Release memmap file resources and remove temporary disk cache."""
         if getattr(self, "_volume", None) is not None:
             if hasattr(self._volume, "flush"):
-                self._volume.flush()
+                try:
+                    self._volume.flush()
+                except OSError:
+                    pass
 
             mmap_obj = getattr(self._volume, "_mmap", None)
             if mmap_obj is not None:
-                mmap_obj.close()
+                try:
+                    mmap_obj.close()
+                except (OSError, ValueError):
+                    pass
 
             del self._volume
             self._volume = None
 
-        search_dir = self.path.parent if self.path.is_file() else self.path
-        cache_file = search_dir / "_tiff_memmap.dat"
-        if cache_file.exists():
-            cache_file.unlink()
-
-        # Delete disk cache file created during initial series load
+        # Delete disk cache file created during series load
         search_dir = self.path.parent if self.path.is_file() else self.path
         cache_file = search_dir / "_tiff_memmap.dat"
         if cache_file.exists():
@@ -91,6 +92,9 @@ class TIFFReader:
                 cache_file.unlink()
             except OSError:
                 pass
+
+    def __del__(self) -> None:
+        self.close()
 
     def get_metadata(self) -> DatasetMetadata:
         return DatasetMetadata(

@@ -37,7 +37,6 @@ class DICOMReader:
             cache_dir = self.path if self.path.is_dir() else self.path.parent
             cache_file = cache_dir / "_dicom_memmap.dat"
 
-            print(f"Creating temporary file-backed memmap: {cache_file}")
             self._volume = np.memmap(
                 cache_file,
                 dtype=self.dtype,
@@ -54,6 +53,27 @@ class DICOMReader:
         self.dtype_str = str(self.dtype)
         self.bytes_per_element = np.dtype(self.dtype).itemsize
 
+    def close(self) -> None:
+        """Release memmap file resources and remove temporary disk cache."""
+        if getattr(self, "_volume", None) is not None:
+            if hasattr(self._volume, "flush"):
+                self._volume.flush()
+
+            mmap_obj = getattr(self._volume, "_mmap", None)
+            if mmap_obj is not None:
+                mmap_obj.close()
+
+            del self._volume
+            self._volume = None
+
+        cache_dir = self.path if self.path.is_dir() else self.path.parent
+        cache_file = cache_dir / "_dicom_memmap.dat"
+        if cache_file.exists():
+            cache_file.unlink()
+
+    def __del__(self) -> None:
+        self.close()
+
     def get_metadata(self) -> DatasetMetadata:
         return DatasetMetadata(
             filename=self.path.name,
@@ -68,7 +88,7 @@ class DICOMReader:
 
     def load_projection(self, frame_index: int) -> np.ndarray:
         self._validate_frame_index(frame_index)
-        return np.asarray(self._volume[frame_index]).copy()
+        return np.asarray(self._volume[frame_index, :, :]).copy()
 
     def load_sinogram(self, slice_index: int) -> np.ndarray:
         self._validate_slice_index(slice_index)
