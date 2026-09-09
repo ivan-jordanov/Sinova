@@ -24,3 +24,27 @@ export interface PreviewResult {
   message: string;
 }
 
+export interface SinogramViewerProps {
+  data?: PreviewResult;
+  isLoading: boolean;
+  colormap?: string;
+}
+
+export interface ProjectionViewerProps {
+  data?: PreviewResult;
+  isLoading: boolean;
+  colormap?: string;
+}
+
+export interface ImageStats {
+  min: number;
+  max: number;
+  mean: number;
+  stdDev: number;
+  snr: number;
+}
+
+export interface LineProfileProps {
+  data?: PreviewResult;
+  isLoading?: boolean;
+}

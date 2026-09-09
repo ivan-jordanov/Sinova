@@ -66,7 +66,7 @@ class DATReader:
             width=self.width,
             height=self.height,
             dtype=str(self.dtype),
-            slices=self.projection_count,
+            projection_count=self.projection_count,
             detector_height=self.height,
             detector_width=self.width,
         )

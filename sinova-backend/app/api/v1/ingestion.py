@@ -14,6 +14,7 @@ from app.services.infrastructure.io_service import validate_path
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
+
 @router.post("/browse", response_model=BrowseResponse)
 def browse_file() -> BrowseResponse:
     """
@@ -49,6 +50,7 @@ def browse_file() -> BrowseResponse:
             status_code=500, detail=f"Failed to open OS file picker: {str(e)}"
         )
 
+
 @router.post("/load", response_model=LoadDatasetResponse)
 def load(request: LoadDatasetRequest) -> LoadDatasetResponse:
     try:
@@ -69,7 +71,6 @@ def load(request: LoadDatasetRequest) -> LoadDatasetResponse:
                 detector_width=metadata["detector_width"],
                 detector_height=metadata["detector_height"],
                 projections=metadata["projection_count"],
-                slices=metadata["slices"],
                 format=metadata["format"],
             ),
         )
@@ -82,16 +83,24 @@ def load(request: LoadDatasetRequest) -> LoadDatasetResponse:
         )
 
 
+@router.post("/unload")
+def unload() -> dict[str, bool]:
+    """Unloads the active dataset and releases memory and file handles."""
+    try:
+        dataset_service = get_dataset_service()
+        dataset_service.unload_dataset()
+        return {"unloaded": True}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to unload dataset: {str(e)}",
+        )
+
+
 @router.get("/metadata", response_model=DatasetMetadata)
 def metadata() -> DatasetMetadata:
     """
     Get metadata for the currently loaded dataset.
-
-    Returns:
-        Metadata about the active dataset
-
-    Raises:
-        HTTPException 400: If no dataset is currently loaded
     """
     try:
         dataset_service = get_dataset_service()

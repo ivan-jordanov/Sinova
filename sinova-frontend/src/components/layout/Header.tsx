@@ -8,13 +8,14 @@ import {
   useMantineColorScheme,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useMutation } from "@tanstack/react-query";
-import { browseDatasetFile, loadDataset } from "../../api/dataset";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { browseDatasetFile, loadDataset, unloadDataset } from "../../api/dataset";
 import { useDatasetStore } from "../../store/datasetStore";
 import { usePreprocessingStore } from "../../store/preprocessingStore";
 import { useBackendHealth } from "../../hooks/useBackendHealth";
 
 export function Header() {
+  const queryClient = useQueryClient();
   const activeMetadata = useDatasetStore((state) => state.metadata);
   const setMetadata = useDatasetStore((state) => state.setMetadata);
 
@@ -28,73 +29,88 @@ export function Header() {
   const isDark = colorScheme === "dark";
 
   // Mutation for POST /load
-const loadMutation = useMutation({
-  mutationFn: (filePath: string) => loadDataset(filePath),
-  onMutate: () => {
-    notifications.show({
-      id: "loading-dataset",
-      loading: true,
-      title: "Loading Dataset",
-      message: "Ingesting dataset...",
-      autoClose: false,
-      withCloseButton: false,
-    });
-  },
-  onSuccess: (data) => {
-    notifications.update({
-      id: "loading-dataset",
-      color: "green",
-      title: "Dataset Loaded",
-      message: `Successfully loaded ${data.name}`,
-      loading: false,
-      autoClose: 4000,
-      withCloseButton: true,
-    });
-
-    // 1. Update dataset store metadata
-    setMetadata(data);
-
-    // 2. Set total slices and reset selected slice to initial index
-    if (data.slices) {
-      setTotalSlices(data.slices);
-      selectSlice(0); // Ensures preview query has a valid slice value immediately
-    }
-  },
-  onError: (error: Error) => {
-    notifications.update({
-      id: "loading-dataset",
-      color: "red",
-      title: "Failed to Load Dataset",
-      message: error.message || "An error occurred while loading the dataset.",
-      loading: false,
-      autoClose: 5000,
-      withCloseButton: true,
-    });
-  },
-});
-
-  const handleLoadFileClick = async () => {
-    try {
-      // 1. Open native OS file picker via FastAPI host process
-      const fullPath = await browseDatasetFile();
-
-      if (!fullPath) return;
-
+  const loadMutation = useMutation({
+    mutationFn: (filePath: string) => loadDataset(filePath),
+    onMutate: () => {
       notifications.show({
         id: "loading-dataset",
         loading: true,
         title: "Loading Dataset",
-        message: `Ingesting dataset...`,
+        message: "Ingesting dataset...",
         autoClose: false,
         withCloseButton: false,
       });
-
-      // 2. Pass the exact full path to /ingestion/load
-      loadMutation.mutate(fullPath, {
-        onSettled: () => {
-          notifications.hide("loading-dataset");
-        },
+    },
+    onSuccess: (data) => {
+      notifications.update({
+        id: "loading-dataset",
+        color: "green",
+        title: "Dataset Loaded",
+        message: `Successfully loaded ${data.name}`,
+        loading: false,
+        autoClose: 4000,
+        withCloseButton: true,
       });
+
+      setMetadata(data);
+
+      if (data.slices) {
+        setTotalSlices(data.slices);
+        selectSlice(0);
+      }
+    },
+    onError: (error: Error) => {
+      notifications.update({
+        id: "loading-dataset",
+        color: "red",
+        title: "Failed to Load Dataset",
+        message: error.message || "An error occurred while loading the dataset.",
+        loading: false,
+        autoClose: 5000,
+        withCloseButton: true,
+      });
+    },
+  });
+
+  // Mutation for POST /unload
+  const unloadMutation = useMutation({
+    mutationFn: unloadDataset,
+    onSuccess: () => {
+      // 1. Clear dataset metadata from store
+      setMetadata(null);
+
+      // 2. Reset slice count in preprocessing store
+      setTotalSlices(0);
+      selectSlice(0);
+
+      // 3. Purge cached preview queries so viewers reset immediately
+      queryClient.removeQueries({ queryKey: ["preview"] });
+
+      notifications.show({
+        id: "clear-dataset",
+        color: "gray",
+        title: "Dataset Deselected",
+        message: "Active dataset cleared from session.",
+        autoClose: 3000,
+      });
+    },
+    onError: (error: Error) => {
+      notifications.show({
+        id: "clear-dataset-error",
+        color: "red",
+        title: "Failed to Unload Dataset",
+        message: error.message || "An error occurred while clearing the dataset.",
+        autoClose: 5000,
+      });
+    },
+  });
+
+  const handleLoadFileClick = async () => {
+    try {
+      const fullPath = await browseDatasetFile();
+      if (!fullPath) return;
+
+      loadMutation.mutate(fullPath);
     } catch (error) {
       // User closed or cancelled file dialog
     }
@@ -125,6 +141,18 @@ const loadMutation = useMutation({
           >
             Load File
           </Button>
+
+          {activeMetadata && (
+            <Button
+              variant="subtle"
+              color="red"
+              size="compact-xs"
+              loading={unloadMutation.isPending}
+              onClick={() => unloadMutation.mutate()}
+            >
+              Deselect
+            </Button>
+          )}
         </Group>
 
         <Badge color={backendHealth.isSuccess ? "teal" : "yellow"} variant="light">

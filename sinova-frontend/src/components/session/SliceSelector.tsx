@@ -8,19 +8,35 @@ import {
 } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { usePreprocessingStore } from "../../store/preprocessingStore";
+import { useDatasetStore } from "../../store/datasetStore";
 
-export function SliceSelector() {
+interface SliceSelectorProps {
+  context?: "projection" | "sinogram";
+}
+
+export function SliceSelector({ context = "projection" }: SliceSelectorProps) {
   const { session, selectSlice, resetConfiguration } = usePreprocessingStore();
+  const metadata = useDatasetStore((state) => state.metadata);
+
+  // Resolve active display label and bounds based on viewing mode
+  const isProjection = context === "projection";
+  
+  const label = isProjection ? "PROJECTION" : "ROW";
+  
+  const totalItems = isProjection
+    ? (metadata?.projections ?? session.totalSlices)
+    : (metadata?.detectorHeight ?? session.totalSlices);
+
   const [pendingSlice, setPendingSlice] = useState<number | null>(null);
   const [localSlice, setLocalSlice] = useState<number | string>(session.selectedSlice);
 
-  // Synchronize local input state when active store slice updates
   useEffect(() => {
     setLocalSlice(session.selectedSlice);
   }, [session.selectedSlice]);
 
+  const maxSlice = Math.max(0, totalItems - 1);
+
   const goToSlice = (targetSlice: number) => {
-    const maxSlice = Math.max(0, session.totalSlices - 1);
     const clampedSlice = Math.max(0, Math.min(targetSlice, maxSlice));
 
     if (clampedSlice === session.selectedSlice) {
@@ -53,13 +69,11 @@ export function SliceSelector() {
     setLocalSlice(session.selectedSlice);
   };
 
-  const maxSlice = Math.max(0, session.totalSlices - 1);
-
   return (
     <>
       <Group gap={5}>
         <Text size="xs" c="dimmed">
-          SLICE
+          {label}
         </Text>
         <NumberInput
           hideControls
@@ -72,13 +86,13 @@ export function SliceSelector() {
           onKeyDown={handleKeyDown}
         />
         <Text size="xs" c="dimmed">
-          / {session.totalSlices}
+          / {totalItems}
         </Text>
         <ActionIcon
           size="sm"
           variant="subtle"
           onClick={() => goToSlice(session.selectedSlice - 1)}
-          aria-label="Previous slice"
+          aria-label={`Previous ${label.toLowerCase()}`}
           disabled={session.selectedSlice <= 0}
         >
           ‹
@@ -87,7 +101,7 @@ export function SliceSelector() {
           size="sm"
           variant="subtle"
           onClick={() => goToSlice(session.selectedSlice + 1)}
-          aria-label="Next slice"
+          aria-label={`Next ${label.toLowerCase()}`}
           disabled={session.selectedSlice >= maxSlice}
         >
           ›
@@ -100,7 +114,7 @@ export function SliceSelector() {
         title="Unsaved changes"
       >
         <Text size="sm" c="dimmed">
-          Changing the slice will discard the current preprocessing configuration.
+          Changing the target index will discard the current preprocessing configuration.
         </Text>
         <Group justify="flex-end" mt="lg">
           <Button variant="default" onClick={cancel}>

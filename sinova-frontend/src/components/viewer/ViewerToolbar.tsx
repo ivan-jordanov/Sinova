@@ -1,7 +1,9 @@
 import { Button, Group, SegmentedControl, Select, Text } from "@mantine/core";
 import { useViewerStore } from "../../store/viewerStore";
+
 export function ViewerToolbar() {
-  const { mode, setMode, resetZoom } = useViewerStore();
+  const { mode, setMode, colormap, setColormap, resetZoom } = useViewerStore();
+
   return (
     <Group justify="space-between" my="md">
       <Group gap="xs">
@@ -22,8 +24,13 @@ export function ViewerToolbar() {
         <Select
           size="xs"
           w={110}
-          defaultValue="viridis"
-          data={["viridis", "gray", "magma"]}
+          value={colormap}
+          onChange={(val) => val && setColormap(val)}
+          data={[
+            { label: "gray", value: "Greys" },
+            { label: "viridis", value: "Viridis" },
+            { label: "magma", value: "Magma" },
+          ]}
           aria-label="Colormap"
         />
         <Button size="xs" variant="subtle" onClick={resetZoom}>

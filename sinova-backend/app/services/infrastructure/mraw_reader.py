@@ -63,7 +63,7 @@ class MRAWReader:
             dtype=self.dtype_str,
             detector_height=self.height,
             detector_width=self.width,
-            slices=self.projection_count
+            projection_count=self.projection_count
         )
 
     def load_projection(self, frame_index: int) -> np.ndarray:

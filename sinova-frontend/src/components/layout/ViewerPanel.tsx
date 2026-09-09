@@ -3,14 +3,14 @@ import { useViewerStore } from "../../store/viewerStore";
 import { ProjectionViewer } from "../viewer/ProjectionViewer";
 import { SinogramViewer } from "../viewer/SinogramViewer";
 import { ViewerToolbar } from "../viewer/ViewerToolbar";
-import { LineProfile } from "../viewer/LineProfile";
+import { GlobalAnalysis } from "../viewer/GlobalAnalysis";
 import { SliceSelector } from "../session/SliceSelector";
 import { usePreview } from "../../hooks/usePreview";
 import { usePreprocessingStore } from "../../store/preprocessingStore";
 import { useDatasetStore } from "../../store/datasetStore";
 
 export function ViewerPanel() {
-  const { context, setContext } = useViewerStore();
+  const { context, setContext, mode, colormap } = useViewerStore();
   const operations = usePreprocessingStore((state) => state.operations);
   const selectedSlice = usePreprocessingStore((state) => state.session.selectedSlice);
   const metadata = useDatasetStore((state) => state.metadata);
@@ -20,9 +20,9 @@ export function ViewerPanel() {
       context,
       slice: selectedSlice,
       configuration: { operations },
-      mode: "current",
+      mode,
     },
-    Boolean(metadata) // Runs only when dataset metadata exists
+    Boolean(metadata)
   );
 
   return (
@@ -32,7 +32,7 @@ export function ViewerPanel() {
           <Text className="eyebrow">DATA CONTEXT</Text>
           <Text fw={600}>Preview surface</Text>
         </div>
-        <SliceSelector />
+        <SliceSelector context={context} />
       </Group>
 
       <Tabs
@@ -67,14 +67,16 @@ export function ViewerPanel() {
             <ProjectionViewer
               data={preview.data}
               isLoading={preview.isLoading}
+              colormap={colormap}
             />
           ) : (
             <SinogramViewer
               data={preview.data}
               isLoading={preview.isLoading}
+              colormap={colormap}
             />
           )}
-          <LineProfile />
+          <GlobalAnalysis data={preview.data} isLoading={preview.isLoading} />
         </Box>
       </Box>
     </Box>

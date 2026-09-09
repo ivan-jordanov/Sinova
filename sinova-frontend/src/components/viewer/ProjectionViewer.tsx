@@ -1,15 +1,10 @@
 import { useMemo } from "react";
 import Plot from "react-plotly.js";
 import { Box, Group, LoadingOverlay, Text } from "@mantine/core";
-import type { PreviewResult } from "../../types/preview";
 import flatTo2DMatrix from "../../utils/matrix";
+import type { ProjectionViewerProps } from "../../types/preview";
 
-interface ProjectionViewerProps {
-  data?: PreviewResult;
-  isLoading: boolean;
-}
-
-export function ProjectionViewer({ data, isLoading }: ProjectionViewerProps) {
+export function ProjectionViewer({ data, isLoading, colormap = "Greys" }: ProjectionViewerProps) {
   const matrix2D = useMemo(() => {
     if (!data?.data || !data.width || !data.height) return [];
     return flatTo2DMatrix(data.data, data.width, data.height);
@@ -35,17 +30,18 @@ export function ProjectionViewer({ data, isLoading }: ProjectionViewerProps) {
           aspectRatio: hasData ? `${data!.width} / ${data!.height}` : "16 / 9",
           minHeight: hasData ? "auto" : "300px",
           position: "relative",
-          backgroundColor: "#1a1b1e",
+          backgroundColor: "#d3d5db",
         }}
       >
         <Plot
+          key={`projection-${colormap}`}
           data={
             hasData
               ? [
                   {
                     z: matrix2D,
                     type: "heatmap",
-                    colorscale: "Greys",
+                    colorscale: colormap,
                     showscale: false,
                     zauto: false,
                     zmin: data!.minVal,
@@ -62,7 +58,6 @@ export function ProjectionViewer({ data, isLoading }: ProjectionViewerProps) {
             xaxis: { visible: false, autorange: true, fixedrange: false },
             yaxis: { visible: false, autorange: "reversed", fixedrange: false },
           }}
-          // doubleClick: false stops the glitching behavior caused by double-clicking
           config={{ displayModeBar: false, responsive: true, doubleClick: false, showTips: false }}
           useResizeHandler
           style={{ width: "100%", height: "100%", display: "block" }}

@@ -6,3 +6,8 @@ export interface BackendDatasetMetadata {
   slices: number;
   format: string;
 }
+
+export interface LoadDatasetResponse {
+  loaded: boolean;
+  metadata: BackendDatasetMetadata;
+}

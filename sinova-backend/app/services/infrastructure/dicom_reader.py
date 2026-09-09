@@ -64,7 +64,6 @@ class DICOMReader:
             projection_count=self.projection_count,
             detector_height=self.height,
             detector_width=self.width,
-            slices=self.projection_count
         )
 
     def load_projection(self, frame_index: int) -> np.ndarray:

@@ -12,7 +12,6 @@ class DatasetMetadata(BaseModel):
     detector_width: int = Field(gt=0)
     detector_height: int = Field(gt=0)
     projections: int = Field(gt=0)
-    slices: int = Field(gt=0)
     format: str
 
 

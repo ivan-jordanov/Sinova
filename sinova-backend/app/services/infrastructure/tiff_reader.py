@@ -64,6 +64,33 @@ class TIFFReader:
 
             self.dtype_str = str(self.dtype)
             self.bytes_per_element = np.dtype(self.dtype).itemsize
+    
+    def close(self) -> None:
+        """Release memmap file resources and remove temporary disk cache."""
+        if getattr(self, "_volume", None) is not None:
+            if hasattr(self._volume, "flush"):
+                self._volume.flush()
+
+            mmap_obj = getattr(self._volume, "_mmap", None)
+            if mmap_obj is not None:
+                mmap_obj.close()
+
+            del self._volume
+            self._volume = None
+
+        search_dir = self.path.parent if self.path.is_file() else self.path
+        cache_file = search_dir / "_tiff_memmap.dat"
+        if cache_file.exists():
+            cache_file.unlink()
+
+        # Delete disk cache file created during initial series load
+        search_dir = self.path.parent if self.path.is_file() else self.path
+        cache_file = search_dir / "_tiff_memmap.dat"
+        if cache_file.exists():
+            try:
+                cache_file.unlink()
+            except OSError:
+                pass
 
     def get_metadata(self) -> DatasetMetadata:
         return DatasetMetadata(
@@ -75,7 +102,6 @@ class TIFFReader:
             projection_count=self.projection_count,
             detector_height=self.height,
             detector_width=self.width,
-            slices=self.projection_count,
         )
 
     def load_projection(self, frame_index: int) -> np.ndarray:

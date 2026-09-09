@@ -16,9 +16,11 @@ from app.services.infrastructure.tiff_reader import TIFFReader
 
 
 class DatasetNotLoaded(Exception):
-    """Raised when trying to access a dataset that hasn't been loaded."""
+    """Raised when an operation attempts to access a dataset that has not been loaded."""
 
-    pass
+    def __init__(self, message: str = "No dataset is currently loaded.") -> None:
+        self.message = message
+        super().__init__(self.message)
 
 
 class DatasetService:
@@ -125,13 +127,15 @@ class DatasetService:
         return self.reader is not None and self.metadata is not None
 
     def _close_reader(self) -> None:
-        """Close current reader resource and reset state."""
+        """Safely close active reader resources."""
         if self.reader is not None:
-            close = getattr(self.reader, "close", None)
-            if callable(close):
-                close()
+            if hasattr(self.reader, "close"):
+                self.reader.close()
+            self.reader = None
 
-        self.reader = None
+    def unload_dataset(self) -> None:
+        """Unload active dataset, release file handles, and reset state."""
+        self._close_reader()
         self.metadata = None
         self.current_path = None
 
