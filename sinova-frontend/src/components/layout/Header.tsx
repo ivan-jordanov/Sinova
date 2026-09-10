@@ -4,6 +4,7 @@ import {
   Button,
   Group,
   Text,
+  Tooltip,
   useComputedColorScheme,
   useMantineColorScheme,
 } from "@mantine/core";
@@ -21,7 +22,7 @@ export function Header() {
 
   const selectSlice = usePreprocessingStore((state) => state.selectSlice);
   const setTotalSlices = usePreprocessingStore((state) => state.setTotalSlices);
-  const { past, future, undo, redo } = usePreprocessingStore();
+  const { past, future, undo, redo, resetConfiguration } = usePreprocessingStore();
 
   const backendHealth = useBackendHealth();
   const { setColorScheme } = useMantineColorScheme();
@@ -76,14 +77,12 @@ export function Header() {
   const unloadMutation = useMutation({
     mutationFn: unloadDataset,
     onSuccess: () => {
-      // 1. Clear dataset metadata from store
       setMetadata(null);
-
-      // 2. Reset slice count in preprocessing store
+      resetConfiguration();
       setTotalSlices(0);
       selectSlice(0);
 
-      // 3. Purge cached preview queries so viewers reset immediately
+      queryClient.invalidateQueries({ queryKey: ["preview"] });
       queryClient.removeQueries({ queryKey: ["preview"] });
 
       notifications.show({
@@ -141,6 +140,25 @@ export function Header() {
           >
             Load File
           </Button>
+
+          <Tooltip
+            label="Supported formats: HDF5 (.h5, .hdf5), TIFF stack (.tif, .tiff), Raw (.raw), and Data (.dat — requires an accompanying .json metadata file)."
+            multiline
+            w={250}
+            withArrow
+            position="bottom-start"
+          >
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="xs"
+              aria-label="Supported file formats info"
+            >
+              <Text size="xs" fw={700} style={{ lineHeight: 1 }}>
+                🛈
+              </Text>
+            </ActionIcon>
+          </Tooltip>
 
           {activeMetadata && (
             <Button

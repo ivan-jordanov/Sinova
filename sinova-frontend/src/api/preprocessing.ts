@@ -38,3 +38,18 @@ export async function getAvailableOperations() {
 export function getProcessingStatus() {
   return apiClient.request<{ status: string; job_id: string | null; message: string }>("/preprocessing/status");
 }
+
+// New: resolve an operation's broad-scope parameters (e.g. COR estimation)
+// into concrete values. Call once, then store the result back into that
+// operation's parameters in your preprocessing store -- preview/apply
+// don't need to know anything changed.
+export async function resolveOperation(request: {
+  short_name: string;
+  parameters: Record<string, unknown>;
+  context: "projection" | "sinogram";
+}): Promise<{ parameters: Record<string, unknown> }> {
+  return apiClient.request<{ parameters: Record<string, unknown> }>(
+    "/preprocessing/resolve",
+    { method: "POST", body: JSON.stringify(request) }
+  );
+}

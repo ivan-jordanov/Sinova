@@ -1,12 +1,16 @@
 import asyncio
 from fastapi import APIRouter, HTTPException
 
-from app.core.config import OPERATION_DEPENDENCIES
+from app.core.config import OPERATION_DEPENDENCIES, OPERATION_SCOPES
 from app.schemas.preprocessing import (
     ApplyPreprocessingRequest,
     JobStatus,
     OperationInfo,
+    ResolveOperationRequest,
+    ResolveOperationResponse,
 )
+from app.services.business.dataset_access import DatasetNotLoaded, get_dataset_service
+from app.services.business.operation_executor import resolve_broad_scope_operation
 from app.services.business.job_manager import get_job_manager
 
 router = APIRouter(prefix="/preprocessing", tags=["preprocessing"])
@@ -14,84 +18,76 @@ router = APIRouter(prefix="/preprocessing", tags=["preprocessing"])
 # Define available operations with metadata (for frontend constraint display)
 AVAILABLE_OPERATIONS = [
     OperationInfo(
-        id="1",
-        name="Normalize",
-        short_name="normalize",
-        category="intensity",
-        description="Normalize intensity values",
-        requires=[],
+        id="1", name="Normalize", short_name="normalize", category="intensity",
+        description="Normalize intensity values", requires=[],
+        scope=OPERATION_SCOPES["normalize"],
     ),
     OperationInfo(
-        id="2",
-        name="Negative Log",
-        short_name="negative_log",
-        category="intensity",
-        description="Apply negative log transformation",
-        requires=["normalize"],
+        id="2", name="Negative Log", short_name="negative_log", category="intensity",
+        description="Apply negative log transformation", requires=["normalize"],
+        scope=OPERATION_SCOPES["negative_log"],
     ),
     OperationInfo(
-        id="3",
-        name="Denoise",
-        short_name="denoise",
-        category="spatial",
-        description="Reduce noise in image",
-        requires=[],
+        id="3", name="Denoise", short_name="denoise", category="spatial",
+        description="Reduce noise in image", requires=[],
+        scope=OPERATION_SCOPES["denoise"],
     ),
     OperationInfo(
-        id="4",
-        name="Ring Filter",
-        short_name="ring_filter",
-        category="spatial",
-        description="Remove ring artifacts",
-        requires=[],
+        id="4", name="Ring Filter", short_name="ring_filter", category="spatial",
+        description="Remove ring artifacts", requires=[],
+        scope=OPERATION_SCOPES["ring_filter"],
     ),
     OperationInfo(
-        id="5",
-        name="Edge Enhance",
-        short_name="edge_enhance",
-        category="spatial",
-        description="Enhance edges",
-        requires=["denoise"],
+        id="5", name="Edge Enhance", short_name="edge_enhance", category="spatial",
+        description="Enhance edges", requires=["denoise"],
+        scope=OPERATION_SCOPES["edge_enhance"],
     ),
     OperationInfo(
-        id="6",
-        name="FOV Mask",
-        short_name="fov_mask",
-        category="spatial",
-        description="Apply field-of-view masking",
-        requires=[],
+        id="6", name="FOV Mask", short_name="fov_mask", category="spatial",
+        description="Apply field-of-view masking", requires=[],
+        scope=OPERATION_SCOPES["fov_mask"],
     ),
     OperationInfo(
-        id="7",
-        name="COR",
-        short_name="cor",
-        category="geometry",
-        description="Apply center-of-rotation correction",
-        requires=[],
+        id="7", name="COR", short_name="cor", category="geometry",
+        description="Apply center-of-rotation correction", requires=[],
+        scope=OPERATION_SCOPES["cor"],
     ),
     OperationInfo(
-        id="8",
-        name="Clip Attenuation",
-        short_name="clip_attenuation",
-        category="intensity",
-        description="Clip attenuation values",
-        requires=[],
+        id="8", name="Clip Attenuation", short_name="clip_attenuation", category="intensity",
+        description="Clip attenuation values", requires=[],
+        scope=OPERATION_SCOPES["clip_attenuation"],
     ),
 ]
 
 
 @router.get("/operations", response_model=list[OperationInfo])
 def get_operations() -> list[OperationInfo]:
-    """
-    Get list of available operations and their dependencies.
-
-    Frontend calls this once to display available operations
-    and understand which operations require which dependencies.
-
-    Returns:
-        List of available operations with their constraints
-    """
     return AVAILABLE_OPERATIONS
+
+
+@router.post("/resolve", response_model=ResolveOperationResponse)
+def resolve_operation(request: ResolveOperationRequest) -> ResolveOperationResponse:
+    """
+    Resolve an operation's broad-scope parameters (e.g. COR estimation) into
+    concrete values. Call this once when the user enables/needs an
+    auto-estimated parameter; store the result back into the frontend's
+    configuration. Preview and /apply then see plain values, same as any
+    manually-entered parameter.
+    """
+
+    dataset_service = get_dataset_service()
+
+    try:
+        if not dataset_service.is_loaded():
+            raise HTTPException(status_code=400, detail="No dataset loaded.")
+
+        resolved_parameters = resolve_broad_scope_operation(
+            request.short_name, request.parameters, dataset_service, request.context,
+        )
+    except DatasetNotLoaded as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return ResolveOperationResponse(parameters=resolved_parameters)
 
 
 @router.post("/apply", response_model=JobStatus)

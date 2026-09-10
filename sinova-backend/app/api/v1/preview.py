@@ -15,12 +15,6 @@ router = APIRouter(prefix="/preview", tags=["preview"])
 
 @router.post("/projection", response_model=PreviewResponse)
 def projection(request: PreviewRequest) -> PreviewResponse:
-    """
-    Generate a preview of a projection frame with preprocessing applied.
-
-    Loads the specified projection, applies all enabled operations,
-    and returns the processed data with intensity range metadata.
-    """
     try:
         dataset_service = get_dataset_service()
 
@@ -30,15 +24,20 @@ def projection(request: PreviewRequest) -> PreviewResponse:
                 detail="No dataset loaded. Call /ingestion/load first.",
             )
 
-        # Load projection frame and apply preprocessing
         frame_data = dataset_service.get_projection(request.slice)
-        #processed = apply_operations_to_data(frame_data, request.configuration)
-        processed = frame_data  # Skip for now, as preprocessing is not yet implemented
 
-        # Ensure contiguous float32 buffer
+        if request.mode == "original":
+            processed = frame_data
+        else:
+            try:
+                request.configuration.validate_operation_order()
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+
+            processed = apply_operations_to_data(frame_data, request.configuration)
+
         processed = np.ascontiguousarray(processed, dtype=np.float32)
 
-        # Compute min/max stats for frontend canvas intensity scaling
         data_min = float(np.min(processed)) if processed.size > 0 else 0.0
         data_max = float(np.max(processed)) if processed.size > 0 else 1.0
 
@@ -52,13 +51,15 @@ def projection(request: PreviewRequest) -> PreviewResponse:
             min_value=data_min,
             max_value=data_max,
             request_id=str(uuid4()),
-            message="Projection preview computed",
+            message=f"Projection preview computed ({request.mode or 'current'})",
         )
 
     except DatasetNotLoaded as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ValueError, EOFError) as e:
         raise HTTPException(status_code=400, detail=f"Invalid frame request: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -68,12 +69,6 @@ def projection(request: PreviewRequest) -> PreviewResponse:
 
 @router.post("/sinogram", response_model=PreviewResponse)
 def sinogram(request: PreviewRequest) -> PreviewResponse:
-    """
-    Generate a preview of a sinogram (horizontal slice) with preprocessing applied.
-
-    Loads the sinogram, applies all enabled operations,
-    and returns the processed data with intensity range metadata.
-    """
     try:
         dataset_service = get_dataset_service()
 
@@ -83,15 +78,20 @@ def sinogram(request: PreviewRequest) -> PreviewResponse:
                 detail="No dataset loaded. Call /ingestion/load first.",
             )
 
-        # Load sinogram and apply preprocessing operations
         sinogram_data = dataset_service.get_sinogram(request.slice)
-        #processed = apply_operations_to_data(sinogram_data, request.configuration)
-        processed = sinogram_data  # Skip for now, as preprocessing is not yet implemented
 
-        # Ensure contiguous float32 buffer
+        if request.mode == "original":
+            processed = sinogram_data
+        else:
+            try:
+                request.configuration.validate_operation_order()
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+
+            processed = apply_operations_to_data(sinogram_data, request.configuration)
+
         processed = np.ascontiguousarray(processed, dtype=np.float32)
 
-        # Compute min/max stats for frontend canvas intensity scaling
         data_min = float(np.min(processed)) if processed.size > 0 else 0.0
         data_max = float(np.max(processed)) if processed.size > 0 else 1.0
 
@@ -105,13 +105,15 @@ def sinogram(request: PreviewRequest) -> PreviewResponse:
             min_value=data_min,
             max_value=data_max,
             request_id=str(uuid4()),
-            message="Sinogram preview computed",
+            message=f"Sinogram preview computed ({request.mode or 'current'})",
         )
 
     except DatasetNotLoaded as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ValueError, EOFError) as e:
         raise HTTPException(status_code=400, detail=f"Invalid slice request: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,

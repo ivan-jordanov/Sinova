@@ -1,8 +1,8 @@
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
-from app.core.config import OPERATION_DEPENDENCIES
+from app.core.config import OPERATION_DEPENDENCIES, OPERATION_SCOPES
 
 DataContext = Literal["projection", "sinogram"]
 
@@ -19,9 +19,18 @@ class Operation(BaseModel):
     category: Literal["intensity", "spatial", "geometry", "destriping"]
     description: str = ""
     enabled: bool
-    scope: Literal["slice", "stack", "dataset"]
+    # Scope is a property of the operation *type*, not something the caller
+    # should have to supply -- the frontend doesn't send it today, so it's
+    # filled in from OPERATION_SCOPES if omitted.
+    scope: Literal["slice", "stack", "dataset"] | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
     requires: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _default_scope_from_registry(self) -> "Operation":
+        if self.scope is None:
+            self.scope = OPERATION_SCOPES.get(self.short_name, "slice")
+        return self
 
 
 class OperationInfo(BaseModel):
@@ -33,6 +42,7 @@ class OperationInfo(BaseModel):
     category: Literal["intensity", "spatial", "geometry", "destriping"]
     description: str
     requires: list[str]
+    scope: Literal["slice", "stack", "dataset"] = "slice"
 
 
 class PreprocessingConfiguration(BaseModel):
@@ -50,7 +60,6 @@ class PreprocessingConfiguration(BaseModel):
             if not op.enabled:
                 continue
 
-            # Check all dependencies
             deps = OPERATION_DEPENDENCIES.get(op.short_name, [])
             for dep in deps:
                 if dep not in enabled_ops:
@@ -58,7 +67,6 @@ class PreprocessingConfiguration(BaseModel):
                         f"Operation '{op.name}' requires '{dep}' to be enabled"
                     )
 
-            # Check that dep comes before this op
             dep_indices = {
                 i
                 for i, o in enumerate(self.operations)
@@ -104,3 +112,23 @@ class ProcessingStatus(BaseModel):
     status: Literal["idle", "queued", "processing", "completed", "failed"]
     job_id: str | None = None
     message: str
+
+
+class ResolveOperationRequest(BaseModel):
+    """
+    Request to resolve an operation's broad-scope parameters (e.g. COR
+    estimation) into concrete values.
+
+    The frontend calls this once (e.g. when the user enables/toggles
+    auto-estimate on an operation), merges the returned parameters back
+    into its own configuration state, and from then on preview/apply just
+    use that configuration unchanged -- no scope logic needed there.
+    """
+
+    short_name: str = Field(min_length=1)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    context: DataContext
+
+
+class ResolveOperationResponse(BaseModel):
+    parameters: dict[str, Any]

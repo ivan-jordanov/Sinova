@@ -30,7 +30,7 @@ export function OperationLibrary() {
                   size="xs"
                   onClick={() => select(operation.id)}
                 >
-                  {operation.shortName}
+                  {operation.name}
                   {operation.enabled && (
                     <Text span c="teal">
                       ●
