@@ -36,6 +36,12 @@ class DatasetService:
         self.current_path: str | None = None
         self.reader: DatasetReader | None = None
         self.metadata: DatasetMetadata | None = None
+        self.rot_center: float | None = None
+        self.crop_y: tuple[int, int] | None = None
+        self.flat_reader: DatasetReader | None = None
+        self.flat_metadata: DatasetMetadata | None = None
+        self.dark_reader: DatasetReader | None = None
+        self.dark_metadata: DatasetMetadata | None = None
 
     def load_dataset(self, file_path: str) -> DatasetMetadata:
         """
@@ -68,6 +74,40 @@ class DatasetService:
         self.current_path = str(validated_path)
 
         return self.metadata
+    
+    def load_normalization(
+    self,
+    flat_path: str | None = None,
+    dark_path: str | None = None,
+    ) -> tuple[DatasetMetadata | None, DatasetMetadata | None]:
+        """
+        Load flat and/or dark reference datasets for normalization.
+    
+        Args:
+            flat_path: Optional path to the flat field file
+            dark_path: Optional path to the dark field file
+    
+        Returns:
+            Tuple containing (metadata_flat, metadata_dark)
+        """
+        metadata_flat: DatasetMetadata | None = None
+        metadata_dark: DatasetMetadata | None = None
+    
+        if flat_path:
+            validated_flat = validate_path(flat_path)
+            flat_reader_type = self._reader_type(validated_flat)
+            self.flat_reader = flat_reader_type(str(validated_flat))
+            metadata_flat = self.flat_reader.get_metadata()
+            self.flat_metadata = metadata_flat
+    
+        if dark_path:
+            validated_dark = validate_path(dark_path)
+            dark_reader_type = self._reader_type(validated_dark)
+            self.dark_reader = dark_reader_type(str(validated_dark))
+            metadata_dark = self.dark_reader.get_metadata()
+            self.dark_metadata = metadata_dark
+    
+        return metadata_flat, metadata_dark
 
     def get_metadata(self) -> DatasetMetadata:
         """
@@ -127,17 +167,35 @@ class DatasetService:
         return self.reader is not None and self.metadata is not None
 
     def _close_reader(self) -> None:
-        """Safely close active reader resources."""
-        if self.reader is not None:
-            if hasattr(self.reader, "close"):
-                self.reader.close()
-            self.reader = None
+        """Safely close active reader resources for main, flat, and dark datasets."""
+        for attr in ("reader", "flat_reader", "dark_reader"):
+            reader_obj = getattr(self, attr, None)
+            if reader_obj is not None:
+                if hasattr(reader_obj, "close"):
+                    reader_obj.close()
+                setattr(self, attr, None)
 
     def unload_dataset(self) -> None:
-        """Unload active dataset, release file handles, and reset state."""
+        """Unload active dataset and normalization references, release file handles, and reset state."""
         self._close_reader()
         self.metadata = None
+        self.flat_metadata = None
+        self.dark_metadata = None
         self.current_path = None
+        self.rot_center = None
+        self.crop_y = None
+        
+    def update_geometry_bounds(
+        self,
+        rot_center: float | None = None,
+        crop_y: tuple[int, int] | None = None,
+    ) -> None:
+        """Update geometric rotation center and vertical cropping bounds."""
+        if rot_center is not None:
+            self.rot_center = rot_center
+
+        if crop_y is not None:
+            self.crop_y = crop_y
 
     @staticmethod
     def _reader_type(path: Path) -> type[DatasetReader]:

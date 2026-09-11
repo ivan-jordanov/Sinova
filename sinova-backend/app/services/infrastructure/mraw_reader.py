@@ -121,3 +121,7 @@ class MRAWReader:
             raise ValueError(
                 f"Slice index {slice_index} out of bounds (0 to {self.height - 1})"
             )
+            
+    def get_data(self) -> np.ndarray:
+        """Return the full dataset array as a NumPy array."""
+        return np.asarray(self._volume)

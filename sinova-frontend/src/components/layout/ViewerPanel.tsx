@@ -1,4 +1,6 @@
 import { Box, Group, Tabs, Text } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { useEffect } from "react";
 import { useViewerStore } from "../../store/viewerStore";
 import { ProjectionViewer } from "../viewer/ProjectionViewer";
 import { SinogramViewer } from "../viewer/SinogramViewer";
@@ -24,6 +26,39 @@ export function ViewerPanel() {
     },
     Boolean(metadata)
   );
+
+  useEffect(() => {
+    if (!preview.isError) return;
+
+    const err = preview.error as any;
+    let errorMessage =
+      err?.body?.detail ?? err?.detail ?? err?.response?.data?.detail;
+
+    if (!errorMessage && typeof err?.message === "string") {
+      try {
+        const parsed = JSON.parse(err.message.replace(/^ApiError:\s*/, ""));
+        errorMessage = parsed?.detail ?? err.message;
+      } catch {
+        errorMessage = err.message;
+      }
+    }
+
+    notifications.show({
+      title: "Preview Error",
+      message: String(errorMessage || "Preview request failed: backend unavailable."),
+      color: "red",
+    });
+  }, [preview.isError, preview.error]);
+
+  useEffect(() => {
+    if (preview.data?.message) {
+      notifications.show({
+        title: "Preview",
+        message: preview.data.message,
+        color: "teal",
+      });
+    }
+  }, [preview.data?.message]);
 
   return (
     <Box className="panel viewer-panel">
@@ -51,17 +86,6 @@ export function ViewerPanel() {
       <ViewerToolbar />
 
       <Box className="viewer-scroll">
-        {preview.isError && (
-          <Text size="xs" c="red">
-            Preview request failed: backend unavailable.
-          </Text>
-        )}
-        {preview.data && (
-          <Text size="xs" c="teal" mb="xs">
-            {preview.data.message}
-          </Text>
-        )}
-
         <Box className="viewer-canvas">
           {context === "projection" ? (
             <ProjectionViewer

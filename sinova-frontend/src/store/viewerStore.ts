@@ -6,6 +6,7 @@ interface ViewerState {
   mode: ViewerDataMode;
   colormap: string;
   zoom: number;
+  resetCounter: number;
   contrast: [number, number];
   crosshair: boolean;
   setContext: (context: DataContext) => void;
@@ -21,10 +22,15 @@ export const useViewerStore = create<ViewerState>((set) => ({
   mode: "current",
   colormap: "Greys",
   zoom: 1,
+  resetCounter: 0,
   contrast: [0, 1],
   crosshair: true,
   setContext: (context) => set({ context }),
   setMode: (mode) => set({ mode }),
   setColormap: (colormap) => set({ colormap }),
-  resetZoom: () => set({ zoom: 1 }),
+  resetZoom: () =>
+    set((state) => ({
+      zoom: 1,
+      resetCounter: state.resetCounter + 1,
+    })),
 }));

@@ -142,7 +142,7 @@ export function Header() {
           </Button>
 
           <Tooltip
-            label="Supported formats: HDF5 (.h5, .hdf5), TIFF stack (.tif, .tiff), Raw (.raw), and Data (.dat — requires an accompanying .json metadata file)."
+            label="Supported formats: HDF5 (.h5, .hdf5), TIFF stack (.tif, .tiff — creates a temporary .dat file), MRAW (.mraw) and Data (.dat — requires an accompanying .json metadata file)."
             multiline
             w={250}
             withArrow

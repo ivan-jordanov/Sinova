@@ -6,9 +6,13 @@ import os
 OPERATION_DEPENDENCIES = {
     "normalize": [],
     "negative_log": ["normalize"],
-    "denoise": [],
+    "clip_attenuation": [],
+    "fov_mask": [],
+    "crop_pad_beam": [],
+    "edge_taper": [],
+    "cor": [],
     "ring_filter": [],
-    "edge_enhance": ["denoise"],
+    "denoise": []
 }
 
 # Operation scope: how much data an operation needs to actually run.

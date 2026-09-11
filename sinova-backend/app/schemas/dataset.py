@@ -3,10 +3,6 @@ from pydantic import BaseModel, Field
 class BrowseResponse(BaseModel):
     path: str
 
-
-class LoadDatasetRequest(BaseModel):
-    path: str
-
 class DatasetMetadata(BaseModel):
     name: str
     detector_width: int = Field(gt=0)
@@ -18,6 +14,14 @@ class DatasetMetadata(BaseModel):
 class LoadDatasetRequest(BaseModel):
     path: str = Field(min_length=1)
 
+class LoadDatasetNormalizationRequest(BaseModel):
+    flat: str = Field(min_length=1)
+    dark: str = Field(min_length=1)
+
+class LoadDatasetNormalizationResponse(BaseModel):
+    loaded: bool
+    metadata_dark: DatasetMetadata | None
+    metadata_flat: DatasetMetadata | None
 
 class LoadDatasetResponse(BaseModel):
     loaded: bool

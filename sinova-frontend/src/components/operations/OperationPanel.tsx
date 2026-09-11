@@ -12,6 +12,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useEffect, useState } from "react";
+import { browseDatasetFile } from "../../api/dataset";
 import { usePreprocessingStore } from "../../store/preprocessingStore";
 
 interface DeferredInputProps extends Omit<NumberInputProps, "value" | "onChange"> {
@@ -54,11 +55,42 @@ export function OperationPanel() {
 
   const params = operation.parameters;
 
+  // Local state for normalization inputs
+  const [darkInput, setDarkInput] = useState<string>(String(params.dark ?? "Auto"));
+  const [flatInput, setFlatInput] = useState<string>(String(params.flat ?? "Auto"));
+
+  useEffect(() => {
+    if (operation.id === "normalization") {
+      setDarkInput(String(params.dark ?? "Auto"));
+      setFlatInput(String(params.flat ?? "Auto"));
+    }
+  }, [operation.id, params.dark, params.flat]);
+
   const updateParam = (key: string, val: unknown, altKey?: string) => {
     state.updateParameter(operation.id, key, val as any);
     if (altKey) {
       state.updateParameter(operation.id, altKey, val as any);
     }
+  };
+
+  const handleBrowseFile = async (paramKey: "dark" | "flat") => {
+    try {
+      const filePath = await browseDatasetFile();
+      if (filePath) {
+        if (paramKey === "dark") setDarkInput(filePath);
+        if (paramKey === "flat") setFlatInput(filePath);
+      }
+    } catch {
+      // Dialog cancelled
+    }
+  };
+
+  const handleToggleOperation = () => {
+    if (operation.id === "normalization") {
+      state.updateParameter("normalization", "dark", darkInput);
+      state.updateParameter("normalization", "flat", flatInput);
+    }
+    state.toggleOperation(operation.id);
   };
 
   return (
@@ -72,34 +104,68 @@ export function OperationPanel() {
         </div>
         <Switch
           checked={operation.enabled}
-          onChange={() => state.toggleOperation(operation.id)}
+          onChange={handleToggleOperation}
           aria-label={`Enable ${operation.name}`}
         />
       </Group>
 
       <Divider />
 
+      {/* NORMALIZATION */}
       {operation.id === "normalization" && (
         <>
-          <Select
-            label="Dark reference"
-            data={["Auto", "Manual"]}
-            value={String(params.dark ?? "Auto")}
-            onChange={(next) => next && updateParam("dark", next)}
-          />
-          <DeferredNumberInput
-            label="Flat reference"
-            value={Number(params.vmax ?? params.flat ?? 0)}
-            onCommit={(val) => updateParam("flat", val, "vmax")}
-          />
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              Dark Reference
+            </Text>
+            <Group gap="xs">
+              <TextInput
+                style={{ flex: 1 }}
+                placeholder="Auto or file path..."
+                value={darkInput}
+                onChange={(e) => setDarkInput(e.currentTarget.value)}
+              />
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => handleBrowseFile("dark")}
+              >
+                Browse
+              </Button>
+            </Group>
+          </Stack>
+
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              Flat Reference
+            </Text>
+            <Group gap="xs">
+              <TextInput
+                style={{ flex: 1 }}
+                placeholder="Auto or file path..."
+                value={flatInput}
+                onChange={(e) => setFlatInput(e.currentTarget.value)}
+              />
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => handleBrowseFile("flat")}
+              >
+                Browse
+              </Button>
+            </Group>
+          </Stack>
+
           <Switch
             label="Apply negative log"
             checked={Boolean(params.logarithm)}
             onChange={(e) => updateParam("logarithm", e.currentTarget.checked)}
+            mt="xs"
           />
         </>
       )}
 
+      {/* ATTENUATION CLIPPING */}
       {operation.id === "attenuation" && (
         <>
           <DeferredNumberInput
@@ -117,6 +183,7 @@ export function OperationPanel() {
         </>
       )}
 
+      {/* FOV MASK */}
       {operation.id === "fov-mask" && (
         <>
           <Select
@@ -126,20 +193,77 @@ export function OperationPanel() {
             onChange={(next) => next && updateParam("boundary", next)}
           />
           <DeferredNumberInput
-            label="Margin (px)"
+            label="Radius / Margin"
+            decimalScale={2}
             value={Number(params.radius ?? params.margin ?? 0.95)}
             onCommit={(val) => updateParam("margin", val, "radius")}
           />
+          <Group grow>
+            <DeferredNumberInput
+              label="Center X"
+              value={Number(params.center_x ?? 0)}
+              onCommit={(val) => updateParam("center_x", val)}
+            />
+            <DeferredNumberInput
+              label="Center Y"
+              value={Number(params.center_y ?? 0)}
+              onCommit={(val) => updateParam("center_y", val)}
+            />
+          </Group>
           <Button variant="default" size="xs">
             Auto detect boundary
           </Button>
         </>
       )}
 
+      {/* CROP & PAD BEAM */}
+      {operation.id === "crop-pad-beam" && (
+        <>
+          <DeferredNumberInput
+            label="Padding (px)"
+            value={Number(params.pad ?? 128)}
+            onCommit={(val) => updateParam("pad", val)}
+          />
+          <DeferredNumberInput
+            label="Edge Average Window (px)"
+            value={Number(params.navg ?? 8)}
+            onCommit={(val) => updateParam("navg", val)}
+          />
+        </>
+      )}
+
+      {/* EDGE TAPER */}
+      {/* DENOISE */}
+      {operation.id === "denoise" && (
+        <>
+          <Select
+            label="Method"
+            data={["median", "gaussian"]}
+            value={String(params.method ?? "median")}
+            onChange={(next) => next && updateParam("method", next)}
+          />
+          {params.method === "gaussian" ? (
+            <DeferredNumberInput
+              label="Sigma"
+              decimalScale={2}
+              value={Number(params.sigma ?? 1.0)}
+              onCommit={(val) => updateParam("sigma", val)}
+            />
+          ) : (
+            <DeferredNumberInput
+              label="Kernel Size"
+              value={Number(params.kernel_size ?? 3)}
+              onCommit={(val) => updateParam("kernel_size", val)}
+            />
+          )}
+        </>
+      )}
+
+      {/* CENTER OF ROTATION */}
       {operation.id === "cor" && (
         <>
           <DeferredNumberInput
-            label="Center of rotation"
+            label="Center of rotation offset"
             decimalScale={1}
             value={Number(params.offset ?? params.value ?? 0.0)}
             onCommit={(val) => updateParam("value", val, "offset")}
@@ -150,14 +274,56 @@ export function OperationPanel() {
         </>
       )}
 
-      {["edge-taper", "fourier-wavelet", "vo-sorting", "neural"].includes(
-        operation.id,
-      ) && (
-        <TextInput
-          label="Configuration status"
-          value="Placeholder configuration"
-          readOnly
-        />
+      {/* FOURIER-WAVELET DESTRIPING */}
+      {operation.id === "fourier-wavelet" && (
+        <>
+          <DeferredNumberInput
+            label="Decomposition Level"
+            value={Number(params.level ?? 5)}
+            onCommit={(val) => updateParam("level", val)}
+          />
+          <DeferredNumberInput
+            label="Damping Factor (Sigma / Parameter)"
+            decimalScale={2}
+            value={Number(params.sigma ?? params.parameter ?? 0.1)}
+            onCommit={(val) => updateParam("parameter", val, "sigma")}
+          />
+        </>
+      )}
+
+      {/* VO'S SORTING DESTRIPING */}
+      {operation.id === "vo-sorting" && (
+        <>
+          <DeferredNumberInput
+            label="Filter Window Size"
+            value={Number(params.window ?? 21)}
+            onCommit={(val) => updateParam("window", val)}
+          />
+          <DeferredNumberInput
+            label="Filtering Strength"
+            decimalScale={2}
+            value={Number(params.strength ?? 0.6)}
+            onCommit={(val) => updateParam("strength", val)}
+          />
+        </>
+      )}
+
+      {/* NEURAL DESTRIPING */}
+      {operation.id === "neural" && (
+        <>
+          <Select
+            label="Neural Model"
+            data={["Default", "DeepStriping-v1", "U-Net-Tomo"]}
+            value={String(params.model ?? "Default")}
+            onChange={(next) => next && updateParam("model", next)}
+          />
+          <DeferredNumberInput
+            label="Model Strength"
+            decimalScale={2}
+            value={Number(params.strength ?? 0.5)}
+            onCommit={(val) => updateParam("strength", val)}
+          />
+        </>
       )}
 
       {operation.id !== "cor" && (

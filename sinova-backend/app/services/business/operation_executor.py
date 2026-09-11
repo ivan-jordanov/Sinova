@@ -20,43 +20,67 @@ import numpy as np
 
 from app.schemas.preprocessing import DataContext, Operation, PreprocessingConfiguration
 from app.services.processing import preprocessing_ops
+from app.services.business.dataset_access import get_dataset_service
+
+dataset_service = get_dataset_service()
 
 
-def apply_single_operation(data: np.ndarray, operation: Operation) -> np.ndarray:
-    """
-    Apply a single preprocessing operation to an array.
-
-    Args:
-        data: Input image data
-        operation: The operation to apply
-
-    Returns:
-        Processed image data
-
-    Raises:
-        ValueError: If operation is unknown or parameters are invalid
-    """
+def apply_single_operation(
+    data: np.ndarray, operation: Operation
+) -> np.ndarray:
+    """Apply a single preprocessing operation to an array using configured parameters."""
     if not operation.enabled:
         return data
 
     short_name = operation.short_name
     params = operation.parameters
 
-    # Intensity operations
+    # 1. NORMALIZATION
+    # 1. NORMALIZATION
     if short_name == "normalize":
-        vmin = params.get("vmin")
-        vmax = params.get("vmax")
-        return preprocessing_ops.normalize(data, vmin, vmax)
+        flat_param = params.get("flat")
+        dark_param = params.get("dark")
+
+        dataset_service = get_dataset_service()
+
+        # Check if new custom paths were provided that aren't loaded yet
+        flat_path = str(flat_param) if flat_param and str(flat_param).lower() != "auto" else None
+        dark_path = str(dark_param) if dark_param and str(dark_param).lower() != "auto" else None
+
+        if flat_path or dark_path:
+            dataset_service.load_normalization(flat_path=flat_path, dark_path=dark_path)
+
+        # Get flat array
+        flat_ref = None
+        if dataset_service.flat_reader is not None:
+            flat_ref = dataset_service.flat_reader.get_data()
+        elif getattr(dataset_service, "reader", None) and hasattr(dataset_service.reader, "get_flat"):
+            flat_ref = dataset_service.reader.get_flat()
+
+        # Get dark array
+        dark_ref = None
+        if dataset_service.dark_reader is not None:
+            dark_ref = dataset_service.dark_reader.get_data()
+        elif getattr(dataset_service, "reader", None) and hasattr(dataset_service.reader, "get_dark"):
+            dark_ref = dataset_service.reader.get_dark()
+
+        data = preprocessing_ops.normalize(data, flat=flat_ref, dark=dark_ref)
+
+        if params.get("logarithm", False):
+            data = preprocessing_ops.negative_log(data)
+
+        return data
 
     elif short_name == "negative_log":
         epsilon = params.get("epsilon", 1e-8)
         return preprocessing_ops.negative_log(data, epsilon)
 
+    # 2. ATTENUATION CLIPPING
     elif short_name == "clip_attenuation":
-        max_value = params.get("threshold", 1.0)
-        return preprocessing_ops.clip_attenuation(data, max_value)
+        max_value = params.get("max_value", params.get("threshold", 1.0))
+        return preprocessing_ops.clip_attenuation(data, max_value=max_value)
 
-    # Spatial operations
+    # 3. SPATIAL & MASKING OPERATIONS
     elif short_name == "denoise":
         method = params.get("method", "median")
         if method == "median":
@@ -69,34 +93,56 @@ def apply_single_operation(data: np.ndarray, operation: Operation) -> np.ndarray
             raise ValueError(f"Unknown denoise method: {method}")
 
     elif short_name == "fov_mask":
-        radius = params.get("radius", 0.95)
-        return preprocessing_ops.apply_fov_mask(data, radius)
+        radius = params.get("radius", params.get("margin", 0.95))
+        center_x = params.get("center_x")
+        center_y = params.get("center_y")
+
+        cx = float(center_x) if center_x else None
+        cy = float(center_y) if center_y else None
+        rad = float(radius) if radius else None
+
+        return preprocessing_ops.apply_fov_mask(
+            data, center_x=cx, center_y=cy, radius=rad
+        )
+
+    elif short_name == "crop_pad_beam":
+        pad = int(params.get("pad", 128))
+        navg = int(params.get("navg", 8))
+        beam_mask = params.get("beam_mask", data > 0)
+        current_cor = float(
+            params.get("rot_center", params.get("offset", params.get("value", 0.0)))
+        )
+
+        data, updated_cor, (y0, y1) = preprocessing_ops.crop_pad_beam(
+            data=data,
+            beam=beam_mask,
+            rot_center=current_cor,
+            pad=pad,
+            navg=navg,
+        )
+
+        params["rot_center"] = updated_cor
+        params["crop_y"] = (y0, y1)
+
+        dataset_service = get_dataset_service()
+        dataset_service.update_geometry_bounds(rot_center=updated_cor, crop_y=(y0, y1))
+
+        return data
 
     elif short_name == "edge_enhance":
-        # STILL INCOMPLETE: declared as an available operation (and has a
-        # dependency on "denoise") but preprocessing_ops.py has no
-        # implementation yet. Raise clearly instead of silently passing
-        # data through -- a silent no-op would look like it worked.
         raise NotImplementedError(
             "Edge Enhance has no implementation yet in preprocessing_ops.py"
         )
 
-    # Geometry operations
+    # 4. GEOMETRY OPERATIONS
     elif short_name == "cor":
-        # By this point `offset` is always a concrete number -- either the
-        # user typed it in, or resolve_broad_scope_operation() estimated it
-        # earlier and the frontend stored it back into the configuration.
-        cor_offset = params.get("offset", 0.0)
+        cor_offset = float(params.get("offset", params.get("value", 0.0)))
         return preprocessing_ops.apply_cor_shift(data, cor_offset)
 
-    # Ring/destriping operations
+    # 5. DESTRIPING OPERATIONS
     elif short_name == "ring_filter":
-        parameter = params.get("parameter", 0.1)
+        parameter = float(params.get("parameter", params.get("sigma", 0.1)))
         if data.ndim == 2:
-            # preprocessing_ops.ring_filter expects a stack; wrap a single
-            # slice the same way apply_fov_mask does for tomopy, and unwrap
-            # the result. Real stripe removal is more effective across a
-            # full sinogram stack than one row -- see OPERATION_SCOPES.
             stacked = data[np.newaxis, :, :]
             return preprocessing_ops.ring_filter(stacked, parameter)[0]
         return preprocessing_ops.ring_filter(data, parameter)

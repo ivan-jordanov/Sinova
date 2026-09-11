@@ -6,6 +6,8 @@ from pathlib import Path
 from app.schemas.dataset import (
     BrowseResponse,
     DatasetMetadata,
+    LoadDatasetNormalizationRequest,
+    LoadDatasetNormalizationResponse,
     LoadDatasetRequest,
     LoadDatasetResponse,
 )
@@ -82,6 +84,40 @@ def load(request: LoadDatasetRequest) -> LoadDatasetResponse:
             detail=f"Failed to load dataset: {str(e)}",
         )
 
+@router.post("/loadNormalization", response_model=LoadDatasetNormalizationResponse)
+def load_normalization(
+    request: LoadDatasetNormalizationRequest,
+) -> LoadDatasetNormalizationResponse:
+    try:
+        # Validate paths if provided
+        validated_flat_path = (
+            str(validate_path(request.flat)) if request.flat else None
+        )
+        validated_dark_path = (
+            str(validate_path(request.dark)) if request.dark else None
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        dataset_service = get_dataset_service()
+        meta_flat, meta_dark = dataset_service.load_normalization(
+            flat_path=validated_flat_path,
+            dark_path=validated_dark_path,
+        )
+
+        return LoadDatasetNormalizationResponse(
+            loaded=True,
+            metadata_flat=meta_flat,
+            metadata_dark=meta_dark,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load normalization reference: {str(e)}",
+        )
 
 @router.post("/unload")
 def unload() -> dict[str, bool]:
