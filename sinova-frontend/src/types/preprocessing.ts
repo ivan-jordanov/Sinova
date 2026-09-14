@@ -29,6 +29,13 @@ export interface PreviewSession {
 export interface PreprocessingConfig {
   operations: PreprocessingOperation[];
 }
+
+export interface FOVMaskParameters {
+  cx: number; 
+  cy: number; 
+  radius: number;
+}
+
 export const initialOperations: PreprocessingOperation[] = [
   {
     id: "normalization",
@@ -103,16 +110,16 @@ export const initialOperations: PreprocessingOperation[] = [
     },
 },
   {
-    id: "cor",
+    id: "cor_shift",
     name: "Center of Rotation",
-    shortName: "cor",
+    shortName: "cor_shift",
     category: "geometry",
     description: "Set the detector center used by geometry-aware operations.",
     enabled: false,
     scope: "dataset",
     parameters: {
       value: 0.0,
-      offset: 0.0,
+      cor_estimation: false
     },
   },
   {

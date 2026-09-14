@@ -135,10 +135,13 @@ def apply_single_operation(
         )
 
     # 4. GEOMETRY OPERATIONS
-    elif short_name == "cor":
-        cor_offset = float(params.get("offset", params.get("value", 0.0)))
-        return preprocessing_ops.apply_cor_shift(data, cor_offset)
-
+    elif short_name == "cor_shift":
+        cor_value = float(params.get("value", 0.0))
+        if(params.get("cor-estimation") is True):
+            cor_value = preprocessing_ops.find_cor_vo(data, params)
+        return cor_value
+    
+    
     # 5. DESTRIPING OPERATIONS
     elif short_name == "ring_filter":
         parameter = float(params.get("parameter", params.get("sigma", 0.1)))
@@ -182,33 +185,6 @@ def apply_operations_to_data(
     return result
 
 
-def cor_needs_estimation(parameters: dict) -> bool:
-    """
-    A COR operation needs broader-data estimation when the caller hasn't
-    given it a concrete offset yet (or explicitly asked to auto-estimate).
-    """
-    return parameters.get("auto", False) or "offset" not in parameters
-
-
-def estimate_cor_offset(dataset_service: Any, context: DataContext) -> float:
-    """
-    Estimate the center-of-rotation offset using the full sinogram stack.
-
-    STILL INCOMPLETE: no COR estimation algorithm exists anywhere in this
-    codebase yet (preprocessing_ops.py only has apply_cor_shift, which
-    *applies* a known offset -- it doesn't find one). A real implementation
-    would typically compare opposing projections (e.g. 0deg vs 180deg) or
-    use something like TomoPy's find_center family of functions.
-
-    Returns a neutral 0.0 offset for now so the pipeline doesn't break.
-    Replace this function's body once a real estimator exists -- the call
-    site (resolve_broad_scope_operation) doesn't need to change.
-    """
-    _ = dataset_service  # unused until a real estimator is implemented
-    _ = context
-    return 0.0
-
-
 def resolve_broad_scope_operation(
     short_name: str,
     parameters: dict,
@@ -228,9 +204,5 @@ def resolve_broad_scope_operation(
     grow a "stack"/"dataset" scope requirement (see OPERATION_SCOPES).
     """
     resolved = dict(parameters)
-
-    if short_name == "cor" and cor_needs_estimation(resolved):
-        resolved["offset"] = estimate_cor_offset(dataset_service, context)
-        resolved["auto"] = True
 
     return resolved

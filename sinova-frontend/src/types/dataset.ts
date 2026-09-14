@@ -6,4 +6,10 @@ export interface DatasetMetadata {
   slices?: number;
   format?: string;
   path?: string; // Optional path property to store the file path
+  beamMask?: {
+    cx: number; 
+    cy: number; 
+    radius: number;
+  }
+  COR?: number;
 }

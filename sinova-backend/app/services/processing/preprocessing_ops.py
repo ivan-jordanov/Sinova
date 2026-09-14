@@ -6,7 +6,6 @@ try:
 except ModuleNotFoundError:
     tomopy = None
 
-
 def normalize(
     data: np.ndarray,
     flat: np.ndarray | float | None = None,
@@ -20,13 +19,11 @@ def normalize(
     if dark is None:
         dark = 0.0
 
-    # Reduce 3D reference stacks to 2D mean frames
     if isinstance(flat, np.ndarray) and flat.ndim == 3:
         flat = np.mean(flat, axis=0)
     if isinstance(dark, np.ndarray) and dark.ndim == 3:
         dark = np.mean(dark, axis=0)
 
-    # Handle 2D sinograms where data shape is (projections, width)
     if (
         data.ndim == 2
         and isinstance(flat, np.ndarray)
@@ -45,7 +42,6 @@ def normalize(
     ):
         dark = np.mean(dark, axis=0)
 
-    # TomoPy execution path
     if tomopy is not None:
         if data.ndim == 2:
             data_3d = data[np.newaxis, :, :]
@@ -57,7 +53,7 @@ def normalize(
                     else flat[np.newaxis, np.newaxis, :]
                 )
             else:
-                flat_3d = flat
+                flat_3d = np.full_like(data_3d, flat)
 
             if isinstance(dark, np.ndarray):
                 dark_3d = (
@@ -66,21 +62,21 @@ def normalize(
                     else dark[np.newaxis, np.newaxis, :]
                 )
             else:
-                dark_3d = dark
+                dark_3d = np.full_like(data_3d, dark)
 
             res = tomopy.normalize(data_3d, flat_3d, dark_3d)
             return res[0].astype(np.float32)
 
-        return tomopy.normalize(data, flat, dark).astype(np.float32)
+        flat_val = flat if isinstance(flat, np.ndarray) else np.full_like(data, flat)
+        dark_val = dark if isinstance(dark, np.ndarray) else np.full_like(data, dark)
+        return tomopy.normalize(data, flat_val, dark_val).astype(np.float32)
 
-    # NumPy fallback
     flat_val = flat.astype(np.float32) if isinstance(flat, np.ndarray) else flat
     dark_val = dark.astype(np.float32) if isinstance(dark, np.ndarray) else dark
 
     denom = np.maximum(flat_val - dark_val, 1e-8)
     normalized = (data - dark_val) / denom
     return np.clip(normalized, 0.0, None).astype(np.float32)
-
 
 def negative_log(data: np.ndarray, epsilon: float = 1e-8) -> np.ndarray:
     """Apply safe negative logarithm transformation."""
@@ -94,7 +90,7 @@ def denoise_median(data: np.ndarray, kernel_size: int = 3) -> np.ndarray:
         kernel_size += 1
 
     if tomopy is not None:
-        return tomopy.prep.median_filter(data, size=kernel_size).astype(
+        return tomopy.misc.corr.median_filter(data, size=kernel_size).astype(
             np.float32
         )
     return ndimage.median_filter(data, size=kernel_size).astype(np.float32)
@@ -103,7 +99,7 @@ def denoise_median(data: np.ndarray, kernel_size: int = 3) -> np.ndarray:
 def denoise_gaussian(data: np.ndarray, sigma: float = 1.0) -> np.ndarray:
     """Apply Gaussian blur for smoothing."""
     if tomopy is not None:
-        return tomopy.prep.gaussian_filter(data, sigma=sigma).astype(
+        return tomopy.misc.corr.gaussian_filter(data, sigma=sigma).astype(
             np.float32
         )
     return ndimage.gaussian_filter(data, sigma=sigma).astype(np.float32)
@@ -162,22 +158,7 @@ def find_cor_vo(
         ratio=ratio,
         drop=drop,
     )
-    return float(center)
-
-
-def apply_cor_shift(data: np.ndarray, cor_offset: float) -> np.ndarray:
-    """Apply Center of Rotation (COR) correction shift."""
-    if abs(cor_offset) < 0.01:
-        return data.astype(np.float32)
-
-    shift_int = int(round(cor_offset))
-
-    if data.ndim == 2:
-        return np.roll(data, shift_int, axis=1).astype(np.float32)
-    elif data.ndim == 3:
-        return np.roll(data, shift_int, axis=2).astype(np.float32)
-
-    return data.astype(np.float32)
+    return float(10)
 
 
 def ring_filter(data: np.ndarray, parameter: float = 0.1) -> np.ndarray:

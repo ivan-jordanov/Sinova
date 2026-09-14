@@ -15,7 +15,6 @@ export function SinogramViewer({
   const resetCounter = useViewerStore((state) => state.resetCounter);
   const matrix2D = useMemo(() => {
     if (!data?.data || !data.width || !data.height) return [];
-
     return flatTo2DMatrix(data.data, data.width, data.height);
   }, [data]);
 
@@ -47,10 +46,8 @@ export function SinogramViewer({
         }}
       >
         <Plot
-          // 1. REMOVE resetCounter from key so component isn't destroyed
           key={`sinogram-${colormap}-${data?.width}-${data?.height}`} 
           
-          // 2. ADD revision prop to force react-plotly to sync updates immediately
           revision={resetCounter} 
           
           data={
@@ -70,19 +67,15 @@ export function SinogramViewer({
           }
           layout={{
             autosize: true,
-            
-            // 3. ADD uirevision for Plotly's native, seamless zoom reset
-            uirevision: resetCounter, 
-            
             margin: { l: 0, r: 0, t: 0, b: 0 },
             paper_bgcolor: "transparent",
             plot_bgcolor: "transparent",
+            dragmode: "zoom",
             xaxis: { visible: false, autorange: true, fixedrange: false },
             yaxis: { 
               visible: false, 
               autorange: "reversed", 
               fixedrange: false,
-              // 4. ADD scaleanchor to force square pixels so it never stretches on resize
               scaleanchor: "x" 
             },
           }}

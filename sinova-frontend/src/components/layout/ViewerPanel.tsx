@@ -1,6 +1,6 @@
 import { Box, Group, Tabs, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useViewerStore } from "../../store/viewerStore";
 import { ProjectionViewer } from "../viewer/ProjectionViewer";
 import { SinogramViewer } from "../viewer/SinogramViewer";
@@ -16,6 +16,8 @@ export function ViewerPanel() {
   const operations = usePreprocessingStore((state) => state.operations);
   const selectedSlice = usePreprocessingStore((state) => state.session.selectedSlice);
   const metadata = useDatasetStore((state) => state.metadata);
+
+  const maxFetchTimeRef = useRef<number>(0);
 
   const preview = usePreview(
     {
@@ -51,14 +53,19 @@ export function ViewerPanel() {
   }, [preview.isError, preview.error]);
 
   useEffect(() => {
-    if (preview.data?.message) {
+    const data = preview.data;
+    const fetchTime = preview.dataUpdatedAt;
+
+    // Only fire if the timestamp is NEWER than the last one we notified about
+    if (data?.message && fetchTime && fetchTime > maxFetchTimeRef.current) {
+      maxFetchTimeRef.current = fetchTime;
       notifications.show({
         title: "Preview",
-        message: preview.data.message,
+        message: data.message,
         color: "teal",
       });
     }
-  }, [preview.data?.message]);
+  }, [preview.data, preview.dataUpdatedAt]);
 
   return (
     <Box className="panel viewer-panel">

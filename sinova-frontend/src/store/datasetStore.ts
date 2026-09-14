@@ -5,6 +5,8 @@ interface DatasetState {
   metadata: DatasetMetadata | null;
   selectedFile: File | null;
   setMetadata: (metadata: DatasetMetadata | null) => void;
+  updateMetadata: (partial: Partial<DatasetMetadata>) => void;
+  setBeamMask: (mask: { cx: number; cy: number; radius: number } | undefined) => void;
   setDataset: (file: File) => void;
   clearDataset: () => void;
 }
@@ -14,6 +16,16 @@ export const useDatasetStore = create<DatasetState>((set) => ({
   selectedFile: null,
 
   setMetadata: (metadata) => set({ metadata }),
+
+  updateMetadata: (partial) =>
+    set((state) => ({
+      metadata: state.metadata ? { ...state.metadata, ...partial } : null,
+    })),
+
+  setBeamMask: (beamMask) =>
+    set((state) => ({
+      metadata: state.metadata ? { ...state.metadata, beamMask } : null,
+    })),
 
   setDataset: (file) =>
     set({

@@ -16,7 +16,6 @@ export async function getProjectionPreview(
 export async function getSinogramPreview(
   params: PreviewParams
 ): Promise<PreviewResult> {
-  console.log("getSinogramPreview", params);
   return requestPreview("/preview/sinogram", {
     context: "sinogram",
     mode: params.mode ?? "original",

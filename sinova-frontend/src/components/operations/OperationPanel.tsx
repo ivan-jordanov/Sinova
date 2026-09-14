@@ -14,6 +14,7 @@ import {
 import { useEffect, useState } from "react";
 import { browseDatasetFile } from "../../api/dataset";
 import { usePreprocessingStore } from "../../store/preprocessingStore";
+import { useViewerStore } from "../../store/viewerStore";
 
 interface DeferredInputProps extends Omit<NumberInputProps, "value" | "onChange"> {
   value: number;
@@ -49,13 +50,49 @@ function DeferredNumberInput({ value, onCommit, ...props }: DeferredInputProps) 
 
 export function OperationPanel() {
   const state = usePreprocessingStore();
+  const setBeamMask = useViewerStore((store) => store.setBeamMask);
+  const beamMask = useViewerStore((store) => store.beamMask);
+
   const operation =
     state.operations.find((item) => item.id === state.selectedOperationId) ??
     state.operations[0];
 
   const params = operation.parameters;
 
-  // Local state for normalization inputs
+  useEffect(() => {
+    const isFov = operation.id === "fov-mask";
+    if (isFov) {
+      const cx = Number(params.center_x ?? 0);
+      const cy = Number(params.center_y ?? 0);
+      const radius = Number(params.radius ?? params.margin ?? 0.95);
+      setBeamMask([true, { cx, cy, radius }]);
+    } else {
+      setBeamMask([false, { cx: 0, cy: 0, radius: 0 }]);
+    }
+  }, [operation.id, setBeamMask]);
+
+  useEffect(() => {
+    if (operation.id === "fov-mask" && beamMask[0] && beamMask[1]) {
+      const { cx, cy, radius } = beamMask[1];
+      if (radius > 0) {
+        const roundedCx = Math.round(cx * 100) / 100;
+        const roundedCy = Math.round(cy * 100) / 100;
+        const roundedRadius = Math.round(radius * 100) / 100;
+
+        if (
+          roundedCx !== params.center_x ||
+          roundedCy !== params.center_y ||
+          roundedRadius !== (params.margin ?? params.radius)
+        ) {
+          state.updateParameter("fov-mask", "center_x", roundedCx);
+          state.updateParameter("fov-mask", "center_y", roundedCy);
+          state.updateParameter("fov-mask", "margin", roundedRadius);
+          state.updateParameter("fov-mask", "radius", roundedRadius);
+        }
+      }
+    }
+  }, [beamMask, operation.id]);
+
   const [darkInput, setDarkInput] = useState<string>(String(params.dark ?? "Auto"));
   const [flatInput, setFlatInput] = useState<string>(String(params.flat ?? "Auto"));
 
@@ -64,12 +101,24 @@ export function OperationPanel() {
       setDarkInput(String(params.dark ?? "Auto"));
       setFlatInput(String(params.flat ?? "Auto"));
     }
-  }, [operation.id, params.dark, params.flat]);
+
+  }, [operation.id, params.dark, params.flat, params.value]);
 
   const updateParam = (key: string, val: unknown, altKey?: string) => {
     state.updateParameter(operation.id, key, val as any);
     if (altKey) {
       state.updateParameter(operation.id, altKey, val as any);
+    }
+
+    if (operation.id === "fov-mask") {
+      const currentCx = key === "center_x" ? Number(val) : Number(params.center_x ?? 0);
+      const currentCy = key === "center_y" ? Number(val) : Number(params.center_y ?? 0);
+      const currentRadius =
+        key === "margin" || key === "radius"
+          ? Number(val)
+          : Number(params.radius ?? params.margin ?? 0.95);
+
+      setBeamMask([true, { cx: currentCx, cy: currentCy, radius: currentRadius }]);
     }
   };
 
@@ -186,12 +235,6 @@ export function OperationPanel() {
       {/* FOV MASK */}
       {operation.id === "fov-mask" && (
         <>
-          <Select
-            label="Boundary"
-            data={["Auto", "Manual"]}
-            value={String(params.boundary ?? "Auto")}
-            onChange={(next) => next && updateParam("boundary", next)}
-          />
           <DeferredNumberInput
             label="Radius / Margin"
             decimalScale={2}
@@ -210,9 +253,6 @@ export function OperationPanel() {
               onCommit={(val) => updateParam("center_y", val)}
             />
           </Group>
-          <Button variant="default" size="xs">
-            Auto detect boundary
-          </Button>
         </>
       )}
 
@@ -232,7 +272,6 @@ export function OperationPanel() {
         </>
       )}
 
-      {/* EDGE TAPER */}
       {/* DENOISE */}
       {operation.id === "denoise" && (
         <>
@@ -260,18 +299,21 @@ export function OperationPanel() {
       )}
 
       {/* CENTER OF ROTATION */}
-      {operation.id === "cor" && (
-        <>
+      {operation.id === "cor_shift" && (
+        <Stack gap="xs">
           <DeferredNumberInput
-            label="Center of rotation offset"
+            label="Center of rotation value"
             decimalScale={1}
-            value={Number(params.offset ?? params.value ?? 0.0)}
-            onCommit={(val) => updateParam("value", val, "offset")}
+            value={Number(params.value ?? 0.0)}
+            onCommit={(val) => updateParam("value", val)}
           />
-          <Button variant="default" size="xs">
-            Estimate from projections
-          </Button>
-        </>
+          <Switch
+            label="Estimate from projections"
+            checked={Boolean(params.cor_estimation)}
+            onChange={(e) => updateParam("cor_estimation", e.currentTarget.checked)}
+            mt="xs"
+          />
+        </Stack>
       )}
 
       {/* FOURIER-WAVELET DESTRIPING */}
