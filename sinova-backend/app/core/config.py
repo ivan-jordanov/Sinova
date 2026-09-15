@@ -3,45 +3,32 @@ from pathlib import Path
 import os
 
 # Operation dependencies: if key op is enabled, all values must be enabled first
-OPERATION_DEPENDENCIES = {
+OPERATION_DEPENDENCIES: dict[str, list[str]] = {
     "normalize": [],
     "negative_log": ["normalize"],
     "clip_attenuation": [],
     "fov_mask": [],
     "crop_pad_beam": [],
-    "edge_taper": [],
-    "cor": [],
-    "ring_filter": [],
-    "denoise": []
+    "denoise": [],
+    "cor_shift": [],
+    "ring_filter_fw": [],
+    "ring_filter_vo": [],
+    "neural": [],
 }
 
-# Operation scope: how much data an operation needs to actually run.
-#   "slice"   -> only the single projection/sinogram row currently selected
-#   "stack"   -> the full projection or sinogram stack for the active context
-#   "dataset" -> data spanning both contexts / the whole dataset
-#
-# This does NOT change how an operation is applied once it has concrete
-# parameters -- apply_single_operation still just runs on whatever array
-# it's given. Scope only matters for operations whose *parameters* can't
-# be known from a single slice (currently just COR estimation). See
-# resolve_broad_scope_operation() in operation_executor.py.
+# Operation scope: Specifies valid preview context applicability ("projection", "sinogram", or "both")
 OPERATION_SCOPES: dict[str, str] = {
-    "normalize": "slice",
-    "negative_log": "slice",
-    "denoise": "slice",
-    # Real stripe removal (preprocessing_ops.ring_filter) works better across
-    # a full sinogram stack than a single row. Left as "slice" for now since
-    # the executor still runs it per-row -- revisit if/when ring_filter is
-    # wired up to operate on the full stack.
-    "ring_filter": "slice",
-    "edge_enhance": "slice",  # STILL INCOMPLETE -- see operation_executor.apply_single_operation
-    "fov_mask": "slice",
-    # Applying a *known* COR offset is slice-level. ESTIMATING that offset
-    # needs the broader sinogram stack -- see resolve_broad_scope_operation().
-    "cor": "slice",
-    "clip_attenuation": "slice",
+    "normalize": "both",
+    "negative_log": "both",
+    "clip_attenuation": "both",
+    "fov_mask": "projection",
+    "crop_pad_beam": "projection",
+    "denoise": "both",
+    "cor_shift": "sinogram",
+    "ring_filter_fw": "sinogram",
+    "ring_filter_vo": "sinogram",
+    "neural": "sinogram",
 }
-
 
 class Settings:
     """Application settings."""

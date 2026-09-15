@@ -7,32 +7,30 @@ import { SinogramViewer } from "../viewer/SinogramViewer";
 import { ViewerToolbar } from "../viewer/ViewerToolbar";
 import { GlobalAnalysis } from "../viewer/GlobalAnalysis";
 import { SliceSelector } from "../session/SliceSelector";
-import { usePreview } from "../../hooks/usePreview";
-import { usePreprocessingStore } from "../../store/preprocessingStore";
-import { useDatasetStore } from "../../store/datasetStore";
+import type { PreviewResult } from "../../types/preview";
 
-export function ViewerPanel() {
-  const { context, setContext, mode, colormap } = useViewerStore();
-  const operations = usePreprocessingStore((state) => state.operations);
-  const selectedSlice = usePreprocessingStore((state) => state.session.selectedSlice);
-  const metadata = useDatasetStore((state) => state.metadata);
+interface ViewerPanelProps {
+  data?: PreviewResult;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  dataUpdatedAt: number;
+}
 
+export function ViewerPanel({
+  data,
+  isLoading,
+  isError,
+  error,
+  dataUpdatedAt,
+}: ViewerPanelProps) {
+  const { context, setContext, colormap } = useViewerStore();
   const maxFetchTimeRef = useRef<number>(0);
 
-  const preview = usePreview(
-    {
-      context,
-      slice: selectedSlice,
-      configuration: { operations },
-      mode,
-    },
-    Boolean(metadata)
-  );
-
   useEffect(() => {
-    if (!preview.isError) return;
+    if (!isError) return;
 
-    const err = preview.error as any;
+    const err = error as any;
     let errorMessage =
       err?.body?.detail ?? err?.detail ?? err?.response?.data?.detail;
 
@@ -50,22 +48,18 @@ export function ViewerPanel() {
       message: String(errorMessage || "Preview request failed: backend unavailable."),
       color: "red",
     });
-  }, [preview.isError, preview.error]);
+  }, [isError, error]);
 
   useEffect(() => {
-    const data = preview.data;
-    const fetchTime = preview.dataUpdatedAt;
-
-    // Only fire if the timestamp is NEWER than the last one we notified about
-    if (data?.message && fetchTime && fetchTime > maxFetchTimeRef.current) {
-      maxFetchTimeRef.current = fetchTime;
+    if (data?.message && dataUpdatedAt && dataUpdatedAt > maxFetchTimeRef.current) {
+      maxFetchTimeRef.current = dataUpdatedAt;
       notifications.show({
         title: "Preview",
         message: data.message,
         color: "teal",
       });
     }
-  }, [preview.data, preview.dataUpdatedAt]);
+  }, [data, dataUpdatedAt]);
 
   return (
     <Box className="panel viewer-panel">
@@ -96,18 +90,18 @@ export function ViewerPanel() {
         <Box className="viewer-canvas">
           {context === "projection" ? (
             <ProjectionViewer
-              data={preview.data}
-              isLoading={preview.isLoading}
+              data={data}
+              isLoading={isLoading}
               colormap={colormap}
             />
           ) : (
             <SinogramViewer
-              data={preview.data}
-              isLoading={preview.isLoading}
+              data={data}
+              isLoading={isLoading}
               colormap={colormap}
             />
           )}
-          <GlobalAnalysis data={preview.data} isLoading={preview.isLoading} />
+          <GlobalAnalysis data={data} isLoading={isLoading} />
         </Box>
       </Box>
     </Box>

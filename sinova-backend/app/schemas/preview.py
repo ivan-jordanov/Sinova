@@ -1,7 +1,7 @@
 
 from pydantic import BaseModel, Field
 
-from .preprocessing import DataContext, PreprocessingConfiguration
+from .preprocessing import DataContext, Operation, PreprocessingConfiguration
 
 
 class PreviewRequest(BaseModel):
@@ -22,3 +22,4 @@ class PreviewResponse(BaseModel):
     max_value: float | None = None
     request_id: str
     message: str
+    operations: list[Operation] = None

@@ -27,37 +27,31 @@ dataset_service = get_dataset_service()
 
 def apply_single_operation(
     data: np.ndarray, operation: Operation
-) -> np.ndarray:
+) -> tuple[np.ndarray, Operation]:
     """Apply a single preprocessing operation to an array using configured parameters."""
     if not operation.enabled:
-        return data
+        return data, operation
 
     short_name = operation.short_name
     params = operation.parameters
 
-    # 1. NORMALIZATION
-    # 1. NORMALIZATION
     if short_name == "normalize":
         flat_param = params.get("flat")
         dark_param = params.get("dark")
-
         dataset_service = get_dataset_service()
 
-        # Check if new custom paths were provided that aren't loaded yet
         flat_path = str(flat_param) if flat_param and str(flat_param).lower() != "auto" else None
         dark_path = str(dark_param) if dark_param and str(dark_param).lower() != "auto" else None
 
         if flat_path or dark_path:
             dataset_service.load_normalization(flat_path=flat_path, dark_path=dark_path)
 
-        # Get flat array
         flat_ref = None
         if dataset_service.flat_reader is not None:
             flat_ref = dataset_service.flat_reader.get_data()
         elif getattr(dataset_service, "reader", None) and hasattr(dataset_service.reader, "get_flat"):
             flat_ref = dataset_service.reader.get_flat()
 
-        # Get dark array
         dark_ref = None
         if dataset_service.dark_reader is not None:
             dark_ref = dataset_service.dark_reader.get_data()
@@ -69,26 +63,24 @@ def apply_single_operation(
         if params.get("logarithm", False):
             data = preprocessing_ops.negative_log(data)
 
-        return data
+        return data, operation
 
     elif short_name == "negative_log":
         epsilon = params.get("epsilon", 1e-8)
-        return preprocessing_ops.negative_log(data, epsilon)
+        return preprocessing_ops.negative_log(data, epsilon), operation
 
-    # 2. ATTENUATION CLIPPING
     elif short_name == "clip_attenuation":
         max_value = params.get("max_value", params.get("threshold", 1.0))
-        return preprocessing_ops.clip_attenuation(data, max_value=max_value)
+        return preprocessing_ops.clip_attenuation(data, max_value=max_value), operation
 
-    # 3. SPATIAL & MASKING OPERATIONS
     elif short_name == "denoise":
         method = params.get("method", "median")
         if method == "median":
             kernel_size = params.get("kernel_size", 3)
-            return preprocessing_ops.denoise_median(data, kernel_size)
+            return preprocessing_ops.denoise_median(data, kernel_size), operation
         elif method == "gaussian":
             sigma = params.get("sigma", 1.0)
-            return preprocessing_ops.denoise_gaussian(data, sigma)
+            return preprocessing_ops.denoise_gaussian(data, sigma), operation
         else:
             raise ValueError(f"Unknown denoise method: {method}")
 
@@ -101,9 +93,10 @@ def apply_single_operation(
         cy = float(center_y) if center_y else None
         rad = float(radius) if radius else None
 
-        return preprocessing_ops.apply_fov_mask(
+        data = preprocessing_ops.apply_fov_mask(
             data, center_x=cx, center_y=cy, radius=rad
         )
+        return data, operation
 
     elif short_name == "crop_pad_beam":
         pad = int(params.get("pad", 128))
@@ -127,28 +120,38 @@ def apply_single_operation(
         dataset_service = get_dataset_service()
         dataset_service.update_geometry_bounds(rot_center=updated_cor, crop_y=(y0, y1))
 
-        return data
+        return data, operation
 
     elif short_name == "edge_enhance":
         raise NotImplementedError(
             "Edge Enhance has no implementation yet in preprocessing_ops.py"
         )
 
-    # 4. GEOMETRY OPERATIONS
     elif short_name == "cor_shift":
-        cor_value = float(params.get("value", 0.0))
-        if(params.get("cor-estimation") is True):
-            cor_value = preprocessing_ops.find_cor_vo(data, params)
-        return cor_value
+        is_estimating = params.get("cor_estimation")
+
+        if is_estimating:
+            estimated_cor = preprocessing_ops.find_cor_vo(data)
+            params["value"] = float(estimated_cor)
+            params["cor_estimation"] = False
+            if "cor-estimation" in params:
+                params["cor-estimation"] = False
+
+        return data, operation
     
-    
-    # 5. DESTRIPING OPERATIONS
-    elif short_name == "ring_filter":
-        parameter = float(params.get("parameter", params.get("sigma", 0.1)))
-        if data.ndim == 2:
-            stacked = data[np.newaxis, :, :]
-            return preprocessing_ops.ring_filter(stacked, parameter)[0]
-        return preprocessing_ops.ring_filter(data, parameter)
+    # DESTRIPING OPERATIONS
+    elif short_name == "ring_filter_fw":
+        level = int(params.get("level", 5))
+        sigma = float(params.get("sigma", params.get("parameter", 2.0)))
+
+        data = preprocessing_ops.ring_filter_fw(data, level=level, sigma=sigma)
+        return data, operation
+
+    elif short_name == "ring_filter_vo":
+        window = int(params.get("window", 21))
+
+        data = preprocessing_ops.ring_filter_vo(data, size=window)
+        return data, operation
 
     else:
         raise ValueError(f"Unknown operation: {short_name}")
@@ -157,32 +160,23 @@ def apply_single_operation(
 def apply_operations_to_data(
     data: np.ndarray,
     configuration: PreprocessingConfiguration,
-) -> np.ndarray:
+) -> tuple[np.ndarray, PreprocessingConfiguration]:
     """
     Apply all enabled operations to data in order.
-
-    Args:
-        data: Input image data
-        configuration: Preprocessing configuration with operations
-
-    Returns:
-        Processed image data
-
-    Raises:
-        ValueError: If any operation fails
     """
     result = data.astype(np.float32)
 
-    for operation in configuration.operations:
+    for i, operation in enumerate(configuration.operations):
         if operation.enabled:
             try:
-                result = apply_single_operation(result, operation)
+                result, updated_operation = apply_single_operation(result, operation)
+                configuration.operations[i] = updated_operation
             except Exception as e:
                 raise ValueError(
                     f"Failed to apply operation '{operation.name}': {str(e)}"
                 ) from e
 
-    return result
+    return result, configuration
 
 
 def resolve_broad_scope_operation(

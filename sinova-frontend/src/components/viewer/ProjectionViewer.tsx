@@ -3,7 +3,6 @@ import Plot from "react-plotly.js";
 import { Box, Group, LoadingOverlay, Text } from "@mantine/core";
 import flatTo2DMatrix from "../../utils/matrix";
 import type { ProjectionViewerProps } from "../../types/preview";
-import type {DatasetMetadata} from "../../types/dataset";
 import { useViewerStore } from "../../store/viewerStore";
 import { useDatasetStore } from "../../store/datasetStore";
 

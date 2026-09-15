@@ -19,17 +19,16 @@ class Operation(BaseModel):
     category: Literal["intensity", "spatial", "geometry", "destriping"]
     description: str = ""
     enabled: bool
-    # Scope is a property of the operation *type*, not something the caller
-    # should have to supply -- the frontend doesn't send it today, so it's
-    # filled in from OPERATION_SCOPES if omitted.
-    scope: Literal["slice", "stack", "dataset"] | None = None
+    
+    # Scope specifies valid preview context applicability
+    scope: Literal["both", "projection", "sinogram"] | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
     requires: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _default_scope_from_registry(self) -> "Operation":
         if self.scope is None:
-            self.scope = OPERATION_SCOPES.get(self.short_name, "slice")
+            self.scope = OPERATION_SCOPES.get(self.short_name, "both")
         return self
 
 
@@ -42,7 +41,7 @@ class OperationInfo(BaseModel):
     category: Literal["intensity", "spatial", "geometry", "destriping"]
     description: str
     requires: list[str]
-    scope: Literal["slice", "stack", "dataset"] = "slice"
+    scope: Literal["both", "projection", "sinogram"] = "both"
 
 
 class PreprocessingConfiguration(BaseModel):
@@ -87,6 +86,22 @@ class PreprocessingConfiguration(BaseModel):
                     f"Operation '{op.name}' must come after '{dep_name}'"
                 )
 
+    def validate_context(self, context: DataContext) -> None:
+        """Validate that enabled operations are permitted in the current data context.
+        
+        Raises:
+            ValueError: If an operation is applied to an incompatible context
+        """
+        for op in self.operations:
+            if not op.enabled:
+                continue
+            
+            if op.scope != "both" and op.scope != context:
+                raise ValueError(
+                    f"Operation '{op.name}' cannot be applied to a {context} preview. "
+                    f"It is only valid for {op.scope}s."
+                )
+
 
 class ApplyPreprocessingRequest(BaseModel):
     configuration: PreprocessingConfiguration
@@ -118,11 +133,6 @@ class ResolveOperationRequest(BaseModel):
     """
     Request to resolve an operation's broad-scope parameters (e.g. COR
     estimation) into concrete values.
-
-    The frontend calls this once (e.g. when the user enables/toggles
-    auto-estimate on an operation), merges the returned parameters back
-    into its own configuration state, and from then on preview/apply just
-    use that configuration unchanged -- no scope logic needed there.
     """
 
     short_name: str = Field(min_length=1)

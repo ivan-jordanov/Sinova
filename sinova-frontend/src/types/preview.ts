@@ -1,4 +1,4 @@
-import type { DataContext, PreprocessingConfig } from "./preprocessing";
+import type { DataContext, PreprocessingConfig, PreprocessingOperation } from "./preprocessing";
 
 export interface PreviewRequest {
   context: DataContext;
@@ -22,6 +22,7 @@ export interface PreviewResult {
   maxVal?: number;
   requestId: string;
   message: string;
+  operations?: PreprocessingOperation[];
 }
 
 export interface SinogramViewerProps {

@@ -4,7 +4,7 @@ export type OperationCategory =
   | "geometry"
   | "destriping";
 
-export type OperationScope = "slice" | "stack" | "dataset";
+export type OperationScope = "both" | "projection" | "sinogram";
 export type DataContext = "projection" | "sinogram";
 export type ViewerDataMode = "current" | "original";
 
@@ -44,7 +44,7 @@ export const initialOperations: PreprocessingOperation[] = [
     category: "intensity",
     description: "Correct detector response using dark and flat references.",
     enabled: false,
-    scope: "slice",
+    scope: "both",
     parameters: {
       dark: "Auto",
       flat: "Auto",
@@ -58,7 +58,7 @@ export const initialOperations: PreprocessingOperation[] = [
     category: "intensity",
     description: "Limit high attenuation values before downstream processing.",
     enabled: false,
-    scope: "slice",
+    scope: "both",
     parameters: {
       threshold: 1.0,
       max_value: 1.0,
@@ -72,7 +72,7 @@ export const initialOperations: PreprocessingOperation[] = [
     category: "spatial",
     description: "Define the useful detector field of view using center coordinates and radius.",
     enabled: false,
-    scope: "dataset",
+    scope: "projection",
     parameters: {
       boundary: "Auto",
       margin: 5,
@@ -89,7 +89,7 @@ export const initialOperations: PreprocessingOperation[] = [
     category: "spatial",
     description: "Crop to active beam box and apply cosine roll-off padding.",
     enabled: false,
-    scope: "dataset",
+    scope: "projection",
     parameters: {
       pad: 128,
       navg: 8,
@@ -102,7 +102,7 @@ export const initialOperations: PreprocessingOperation[] = [
     category: "spatial",
     description: "Apply median or gaussian filtering for noise reduction.",
     enabled: false,
-    scope: "slice",
+    scope: "both",
     parameters: {
       method: "median",
       kernel_size: 3,
@@ -116,7 +116,7 @@ export const initialOperations: PreprocessingOperation[] = [
     category: "geometry",
     description: "Set the detector center used by geometry-aware operations.",
     enabled: false,
-    scope: "dataset",
+    scope: "sinogram",
     parameters: {
       value: 0.0,
       cor_estimation: false
@@ -125,11 +125,11 @@ export const initialOperations: PreprocessingOperation[] = [
   {
     id: "fourier-wavelet",
     name: "Fourier-Wavelet",
-    shortName: "ring_filter",
+    shortName: "ring_filter_fw",
     category: "destriping",
     description: "Preview a frequency and wavelet-based destriping configuration.",
     enabled: false,
-    scope: "slice",
+    scope: "sinogram",
     parameters: {
       level: 5,
       sigma: 2,
@@ -139,11 +139,11 @@ export const initialOperations: PreprocessingOperation[] = [
   {
     id: "vo-sorting",
     name: "Vo's Sorting",
-    shortName: "ring_filter",
+    shortName: "ring_filter_vo",
     category: "destriping",
     description: "Configure the Vo sorting destriping method.",
     enabled: false,
-    scope: "slice",
+    scope: "sinogram",
     parameters: {
       window: 21,
       strength: 0.6,
@@ -156,7 +156,7 @@ export const initialOperations: PreprocessingOperation[] = [
     category: "destriping",
     description: "Placeholder for a future neural destriping model.",
     enabled: false,
-    scope: "slice",
+    scope: "sinogram",
     parameters: {
       model: "Default",
       strength: 0.5,

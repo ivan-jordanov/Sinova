@@ -26,15 +26,19 @@ def projection(request: PreviewRequest) -> PreviewResponse:
 
         frame_data = dataset_service.get_projection(request.slice)
 
+        configuration = request.configuration
         if request.mode == "original":
             processed = frame_data
         else:
             try:
+                request.configuration.validate_context(request.context)
                 request.configuration.validate_operation_order()
             except ValueError as e:
                 raise HTTPException(status_code=422, detail=str(e))
 
-            processed = apply_operations_to_data(frame_data, request.configuration)
+            processed_data = apply_operations_to_data(frame_data, request.configuration)
+            processed = processed_data[0]
+            configuration = processed_data[1]
 
         processed = np.ascontiguousarray(processed, dtype=np.float32)
 
@@ -51,6 +55,7 @@ def projection(request: PreviewRequest) -> PreviewResponse:
             min_value=data_min,
             max_value=data_max,
             request_id=str(uuid4()),
+            operations=configuration.operations,
             message=f"Projection preview computed ({request.mode or 'current'})",
         )
 
@@ -80,15 +85,19 @@ def sinogram(request: PreviewRequest) -> PreviewResponse:
 
         sinogram_data = dataset_service.get_sinogram(request.slice)
 
+        configuration = request.configuration
         if request.mode == "original":
             processed = sinogram_data
         else:
             try:
+                request.configuration.validate_context(request.context)
                 request.configuration.validate_operation_order()
             except ValueError as e:
                 raise HTTPException(status_code=422, detail=str(e))
 
-            processed = apply_operations_to_data(sinogram_data, request.configuration)
+            processed_data = apply_operations_to_data(sinogram_data, request.configuration)
+            processed = processed_data[0]
+            configuration = processed_data[1]
 
         processed = np.ascontiguousarray(processed, dtype=np.float32)
 
@@ -105,6 +114,7 @@ def sinogram(request: PreviewRequest) -> PreviewResponse:
             min_value=data_min,
             max_value=data_max,
             request_id=str(uuid4()),
+            operations=configuration.operations,
             message=f"Sinogram preview computed ({request.mode or 'current'})",
         )
 

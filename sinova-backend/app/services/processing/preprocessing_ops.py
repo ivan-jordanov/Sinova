@@ -1,10 +1,7 @@
 import numpy as np
 from scipy import ndimage
 
-try:
-    import tomopy
-except ModuleNotFoundError:
-    tomopy = None
+import tomopy
 
 def normalize(
     data: np.ndarray,
@@ -158,20 +155,49 @@ def find_cor_vo(
         ratio=ratio,
         drop=drop,
     )
-    return float(10)
+    return float(center)
 
 
-def ring_filter(data: np.ndarray, parameter: float = 0.1) -> np.ndarray:
+def ring_filter_fw(
+    data: np.ndarray,
+    level: int = 5,
+    sigma: float = 2.0,
+    wname: str = "db5",
+) -> np.ndarray:
     """Remove ring artifacts using TomoPy's Fourier-Wavelet stripe removal."""
     if tomopy is None:
         return data.astype(np.float32)
 
-    return tomopy.prep.stripe.remove_stripe_fw(
-        data,
-        level=5,
-        wname="db5",
-        sigma=parameter * 2,
+    is_2d = data.ndim == 2
+    stacked = data[np.newaxis, :, :] if is_2d else data
+
+    res = tomopy.prep.stripe.remove_stripe_fw(
+        stacked,
+        level=level,
+        wname=wname,
+        sigma=sigma,
     ).astype(np.float32)
+
+    return res[0] if is_2d else res
+
+
+def ring_filter_vo(
+    data: np.ndarray,
+    size: int = 21,
+) -> np.ndarray:
+    """Remove ring artifacts using TomoPy's Vo sorting-based stripe removal."""
+    if tomopy is None:
+        return data.astype(np.float32)
+
+    is_2d = data.ndim == 2
+    stacked = data[np.newaxis, :, :] if is_2d else data
+
+    res = tomopy.prep.stripe.remove_stripe_based_sorting(
+        stacked,
+        size=size,
+    ).astype(np.float32)
+
+    return res[0] if is_2d else res
 
 
 def clip_attenuation(

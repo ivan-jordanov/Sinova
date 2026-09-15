@@ -39,9 +39,9 @@ export function ViewerToolbar() {
           {metadata.projections} proj
         </Badge>
       )}
-      {metadata?.slices && (
+      {metadata?.COR && (
         <Badge size="xs" variant="light">
-          {metadata.slices} slices
+          COR: {metadata.COR.toFixed(2)}
         </Badge>
       )}
       {metadata?.format && (
