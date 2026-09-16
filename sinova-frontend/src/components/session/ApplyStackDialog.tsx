@@ -6,7 +6,7 @@ interface Props {
   isPending: boolean;
   message?: string;
 }
-export function ApplyStackDialog({ opened, onClose, onApply, isPending, message }: Props) {
+export function ApplyStackDialog({ opened, onClose, onApply, isPending }: Props) {
   return (
     <Modal
       opened={opened}
@@ -23,7 +23,6 @@ export function ApplyStackDialog({ opened, onClose, onApply, isPending, message 
         </Button>
         <Button onClick={onApply} loading={isPending}>Apply to entire stack</Button>
       </Group>
-      {message && <Text size="xs" c="teal" mt="md">{message}</Text>}
     </Modal>
   );
 }

@@ -4,6 +4,8 @@ import numpy as np
 import pydicom
 from pydicom.errors import InvalidDicomError
 
+from app.services.infrastructure.workspace import ProcessingWorkspace
+
 from app.services.infrastructure.dataset_reader import DatasetMetadata
 
 

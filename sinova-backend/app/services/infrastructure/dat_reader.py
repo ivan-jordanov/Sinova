@@ -6,6 +6,8 @@ import numpy as np
 from app.services.infrastructure.dataset_reader import DatasetMetadata
 from app.services.infrastructure.raw_metadata import read_raw_metadata
 
+from app.services.infrastructure.workspace import ProcessingWorkspace
+
 
 class DATReader:
     """Read raw C-order data shaped as projections x height x width."""

@@ -3,6 +3,8 @@ from pathlib import Path
 import numpy as np
 import pyMRAW
 
+from app.services.infrastructure.workspace import ProcessingWorkspace
+
 from app.services.infrastructure.dataset_reader import DatasetMetadata
 
 

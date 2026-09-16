@@ -14,13 +14,17 @@ once, up front, via resolve_broad_scope_operation() -- by the time a
 configuration reaches apply_operations_to_data, every parameter is already
 a concrete, slice-applicable value.
 """
+import asyncio
+import concurrent.futures
 from typing import Any
 
 import numpy as np
 
 from app.schemas.preprocessing import DataContext, Operation, PreprocessingConfiguration
+from app.services.business.job_manager import JobManager, get_job_manager
 from app.services.processing import preprocessing_ops
-from app.services.business.dataset_access import get_dataset_service
+from app.services.business.dataset_access import DatasetService, get_dataset_service
+from app.services.business.export_service import ExportService
 
 dataset_service = get_dataset_service()
 
@@ -178,25 +182,129 @@ def apply_operations_to_data(
 
     return result, configuration
 
+async def run_preprocessing_job(job_id: str) -> None:
+    job_manager = get_job_manager()
+    job = job_manager.start_job(job_id)
+    if not job:
+        return
 
-def resolve_broad_scope_operation(
-    short_name: str,
-    parameters: dict,
-    dataset_service: Any,
-    context: DataContext,
-) -> dict:
+    try:
+        dataset_service = get_dataset_service()
+        if not dataset_service.is_loaded():
+            raise FileNotFoundError("No dataset loaded")
+
+        proj_ops = [op for op in job.configuration.operations if op.enabled and op.scope in ("projection", "both")]
+        sino_ops = [op for op in job.configuration.operations if op.enabled and op.scope == "sinogram"]
+
+        loop = asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            await loop.run_in_executor(
+                pool, 
+                execute_preprocessing_pipeline, 
+                job_id, job_manager, dataset_service, proj_ops, sino_ops
+            )
+
+        job_manager.complete_job(job_id, "Full stack preprocessed successfully")
+
+    except Exception as e:
+        job_manager.fail_job(job_id, str(e))
+
+def execute_preprocessing_pipeline(
+    job_id: str,
+    job_manager: JobManager,
+    dataset_service: DatasetService,
+    proj_ops: list[Operation],
+    sino_ops: list[Operation],
+) -> str:
     """
-    Resolve an operation's broad-scope parameters into concrete,
-    slice-applicable values. Returns a new dict -- never mutates the input.
-
-    Called once (via POST /preprocessing/resolve), not per-frame and not on
-    every preview request: the resolved value gets stored back into the
-    frontend's configuration like any other parameter, so preview and
-    full-stack apply both just see a plain number from then on.
-
-    Only "cor" needs this today. Add new branches here as more operations
-    grow a "stack"/"dataset" scope requirement (see OPERATION_SCOPES).
+    Synchronous CPU worker running in background thread pool.
+    Scales preprocessing from 0% to 80% progress, and export streaming from 80% to 100%.
     """
-    resolved = dict(parameters)
+    metadata = dataset_service.get_metadata()
+    num_projections = metadata["projection_count"]
+    num_slices = metadata["height"]
+    total_steps = (num_projections if proj_ops else 0) + (num_slices if sino_ops else 0)
+    completed = 0
 
-    return resolved
+    workspace = dataset_service.create_workspace(job_id)
+
+    try:
+        # Projection Operations Pass (Scaled to 0%-80% range)
+        if proj_ops:
+            proj_config = PreprocessingConfiguration(operations=proj_ops)
+            for i in range(num_projections):
+                current_job = job_manager.get_job(job_id)
+                if current_job and current_job.status == "cancelled":
+                    return ""
+
+                frame = dataset_service.get_projection(i)
+                processed_frame, _ = apply_operations_to_data(frame, proj_config)
+                workspace.write_projection(i, processed_frame)
+
+                completed += 1
+                if i % 10 == 0 or i == num_projections - 1:
+                    progress = int((completed / total_steps) * 80)
+                    job_manager.update_progress(
+                        job_id,
+                        progress,
+                        f"Projection pass: {i + 1}/{num_projections}",
+                        current_operation="projection_pass",
+                    )
+            workspace.flush()
+        else:
+            for i in range(num_projections):
+                workspace.write_projection(i, dataset_service.get_projection(i))
+            workspace.flush()
+
+        # Sinogram Operations Pass (Scaled to 0%-80% range)
+        if sino_ops:
+            sino_config = PreprocessingConfiguration(operations=sino_ops)
+            for y in range(num_slices):
+                current_job = job_manager.get_job(job_id)
+                if current_job and current_job.status == "cancelled":
+                    return ""
+
+                sinogram = workspace.read_sinogram(y)
+                processed_sino, _ = apply_operations_to_data(sinogram, sino_config)
+                workspace.write_sinogram(y, processed_sino)
+
+                completed += 1
+                if y % 10 == 0 or y == num_slices - 1:
+                    progress = int((completed / total_steps) * 80)
+                    job_manager.update_progress(
+                        job_id,
+                        progress,
+                        f"Sinogram pass: {y + 1}/{num_slices}",
+                        current_operation="sinogram_pass",
+                    )
+            workspace.flush()
+
+        # Set progress to 80% threshold before initiating export streaming
+        job_manager.update_progress(
+            job_id,
+            80,
+            "Preprocessing complete. Preparing file export...",
+            current_operation="export_pass",
+        )
+
+        # Export Pass (Scaled to 80%-100% range)
+        export_service = ExportService(output_dir=f"./data/exports/{job_id}")
+        export_path = export_service.export_data(
+            workspace_volume=workspace._volume,
+            filename="preprocessed_volume",
+            export_format=metadata["format"],
+            job_id=job_id,
+            job_manager=job_manager,
+        )
+
+        current_job = job_manager.get_job(job_id)
+        if current_job and current_job.status == "cancelled":
+            return ""
+
+        if not export_service.verify_export(export_path):
+            raise RuntimeError(f"Export verification failed for file at {export_path}")
+
+        return export_path
+
+    finally:
+        workspace.close()

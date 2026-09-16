@@ -29,7 +29,6 @@ export async function requestPreview(
   path: string,
   request: PreviewRequest
 ): Promise<PreviewResult> {
-  console.log(request.slice);
   const response = await apiClient.request<{
     context: "projection" | "sinogram";
     width: number;

@@ -36,6 +36,18 @@ export interface FOVMaskParameters {
   radius: number;
 }
 
+export interface JobStatus {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  progress: number;
+  message: string;
+  current_operation: string | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 export const initialOperations: PreprocessingOperation[] = [
   {
     id: "normalization",

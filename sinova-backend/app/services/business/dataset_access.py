@@ -13,6 +13,7 @@ from app.services.infrastructure.dicom_reader import DICOMReader
 from app.services.infrastructure.io_service import validate_path
 from app.services.infrastructure.mraw_reader import MRAWReader
 from app.services.infrastructure.tiff_reader import TIFFReader
+from app.services.infrastructure.workspace import ProcessingWorkspace
 
 
 class DatasetNotLoaded(Exception):
@@ -196,6 +197,15 @@ class DatasetService:
 
         if crop_y is not None:
             self.crop_y = crop_y
+    
+    def create_workspace(self, job_id: str) -> ProcessingWorkspace:
+        """Create a temporary writable workspace for full-stack preprocessing."""
+        if not self.is_loaded():
+            raise FileNotFoundError("No dataset loaded")
+            
+        metadata = self.get_metadata()
+        shape = (metadata["projection_count"], metadata["height"], metadata["width"])
+        return ProcessingWorkspace(job_id=job_id, shape=shape)
 
     @staticmethod
     def _reader_type(path: Path) -> type[DatasetReader]:
@@ -221,6 +231,7 @@ class DatasetService:
             f"Unsupported format: {suffix or path.name}. "
             f"Supported formats: {supported} and DICOM directories"
         )
+        
 
 
 # Global dataset service instance
