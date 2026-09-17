@@ -201,13 +201,21 @@ def ring_filter_vo(
 
 
 def clip_attenuation(
-    data: np.ndarray, max_value: float | None = None
+    data: np.ndarray, max_value: float | None = None, mode: str = "Auto"
 ) -> np.ndarray:
     """Clip attenuation values to prevent negative log artifacts."""
     if max_value is None:
         max_value = 1.0
+    
+    LO = 1e-6
+    HI = max_value
+    valid_data = data[data > 0]
+    
+    if mode == "Auto":
+        LO = np.percentile(valid_data, 1)
+        HI = np.percentile(valid_data, 99.5)
 
-    return np.clip(data, 1e-6, max_value).astype(np.float32)
+    return np.clip(data, LO, HI).astype(np.float32)
 
 def crop_pad_beam(
     data: np.ndarray,

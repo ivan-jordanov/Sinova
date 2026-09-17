@@ -17,6 +17,7 @@ a concrete, slice-applicable value.
 import asyncio
 import concurrent.futures
 from typing import Any
+import os
 
 import numpy as np
 
@@ -75,7 +76,8 @@ def apply_single_operation(
 
     elif short_name == "clip_attenuation":
         max_value = params.get("max_value", params.get("threshold", 1.0))
-        return preprocessing_ops.clip_attenuation(data, max_value=max_value), operation
+        mode = params.get("mode", "Auto")
+        return preprocessing_ops.clip_attenuation(data, max_value=max_value, mode=mode), operation
 
     elif short_name == "denoise":
         method = params.get("method", "median")
@@ -199,8 +201,8 @@ async def run_preprocessing_job(job_id: str) -> None:
         loop = asyncio.get_running_loop()
         with concurrent.futures.ThreadPoolExecutor() as pool:
             await loop.run_in_executor(
-                pool, 
-                execute_preprocessing_pipeline, 
+                pool,
+                execute_preprocessing_pipeline,
                 job_id, job_manager, dataset_service, proj_ops, sino_ops
             )
 
@@ -209,15 +211,76 @@ async def run_preprocessing_job(job_id: str) -> None:
     except Exception as e:
         job_manager.fail_job(job_id, str(e))
 
+
+def _run_parallel_pass(
+    process_pool: concurrent.futures.ProcessPoolExecutor,
+    max_workers: int,
+    count: int,
+    config: "PreprocessingConfiguration",
+    read_item,
+    write_item,
+    job_manager: "JobManager",
+    job_id: str,
+    total_steps: int,
+    completed_before: int,
+    label: str,
+    op_name: str,
+) -> tuple[bool, int]:
+    """
+    Fans `count` independent items out across process_pool (real, separate
+    cores), keeping at most 2 * max_workers in flight. I/O (read_item /
+    write_item) and cancellation/progress checks stay on the calling thread.
+    Returns (was_cancelled, items_completed).
+    """
+    window = max(1, max_workers * 2)
+    pending: dict[concurrent.futures.Future, int] = {}
+    next_idx = 0
+    done = 0
+
+    def top_up() -> None:
+        nonlocal next_idx
+        while next_idx < count and len(pending) < window:
+            fut = process_pool.submit(apply_operations_to_data, read_item(next_idx), config)
+            pending[fut] = next_idx
+            next_idx += 1
+
+    top_up()
+
+    while pending:
+        current_job = job_manager.get_job(job_id)
+        if current_job and current_job.status == "cancelled":
+            for fut in pending:
+                fut.cancel()
+            return True, done
+
+        finished, _ = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
+        for fut in finished:
+            idx = pending.pop(fut)
+            processed_item, _ = fut.result()
+            write_item(idx, processed_item)
+            done += 1
+
+            if done == 1 or done % 10 == 0 or done == count:
+                progress = int(((completed_before + done) / total_steps) * 80)
+                job_manager.update_progress(
+                    job_id, progress, f"{label}: {done}/{count}", current_operation=op_name,
+                )
+        top_up()
+
+    return False, done
+
+
 def execute_preprocessing_pipeline(
     job_id: str,
-    job_manager: JobManager,
-    dataset_service: DatasetService,
-    proj_ops: list[Operation],
-    sino_ops: list[Operation],
+    job_manager: "JobManager",
+    dataset_service: "DatasetService",
+    proj_ops: list["Operation"],
+    sino_ops: list["Operation"],
 ) -> str:
     """
-    Synchronous CPU worker running in background thread pool.
+    Synchronous orchestrator running in a background thread (kept off the
+    event loop). Per-frame/per-slice work is farmed out to a
+    ProcessPoolExecutor so it runs on real, separate cores.
     Scales preprocessing from 0% to 80% progress, and export streaming from 80% to 100%.
     """
     metadata = dataset_service.get_metadata()
@@ -227,63 +290,45 @@ def execute_preprocessing_pipeline(
     completed = 0
 
     workspace = dataset_service.create_workspace(job_id)
+    max_workers = os.cpu_count() or 1
 
     try:
-        # Projection Operations Pass (Scaled to 0%-80% range)
-        if proj_ops:
-            proj_config = PreprocessingConfiguration(operations=proj_ops)
-            for i in range(num_projections):
-                current_job = job_manager.get_job(job_id)
-                if current_job and current_job.status == "cancelled":
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as process_pool:
+            # Projection Operations Pass (Scaled to 0%-80% range)
+            if proj_ops:
+                proj_config = PreprocessingConfiguration(operations=proj_ops)
+                cancelled, done = _run_parallel_pass(
+                    process_pool, max_workers, num_projections, proj_config,
+                    dataset_service.get_projection, workspace.write_projection,
+                    job_manager, job_id, total_steps, completed,
+                    "Projection pass", "projection_pass",
+                )
+                completed += done
+                if cancelled:
                     return ""
+                workspace.flush()
+            else:
+                for i in range(num_projections):
+                    workspace.write_projection(i, dataset_service.get_projection(i))
+                workspace.flush()
 
-                frame = dataset_service.get_projection(i)
-                processed_frame, _ = apply_operations_to_data(frame, proj_config)
-                workspace.write_projection(i, processed_frame)
-
-                completed += 1
-                if i % 10 == 0 or i == num_projections - 1:
-                    progress = int((completed / total_steps) * 80)
-                    job_manager.update_progress(
-                        job_id,
-                        progress,
-                        f"Projection pass: {i + 1}/{num_projections}",
-                        current_operation="projection_pass",
-                    )
-            workspace.flush()
-        else:
-            for i in range(num_projections):
-                workspace.write_projection(i, dataset_service.get_projection(i))
-            workspace.flush()
-
-        # Sinogram Operations Pass (Scaled to 0%-80% range)
-        if sino_ops:
-            sino_config = PreprocessingConfiguration(operations=sino_ops)
-            for y in range(num_slices):
-                current_job = job_manager.get_job(job_id)
-                if current_job and current_job.status == "cancelled":
+            # Sinogram Operations Pass (Scaled to 0%-80% range)
+            if sino_ops:
+                sino_config = PreprocessingConfiguration(operations=sino_ops)
+                cancelled, done = _run_parallel_pass(
+                    process_pool, max_workers, num_slices, sino_config,
+                    workspace.read_sinogram, workspace.write_sinogram,
+                    job_manager, job_id, total_steps, completed,
+                    "Sinogram pass", "sinogram_pass",
+                )
+                completed += done
+                if cancelled:
                     return ""
-
-                sinogram = workspace.read_sinogram(y)
-                processed_sino, _ = apply_operations_to_data(sinogram, sino_config)
-                workspace.write_sinogram(y, processed_sino)
-
-                completed += 1
-                if y % 10 == 0 or y == num_slices - 1:
-                    progress = int((completed / total_steps) * 80)
-                    job_manager.update_progress(
-                        job_id,
-                        progress,
-                        f"Sinogram pass: {y + 1}/{num_slices}",
-                        current_operation="sinogram_pass",
-                    )
-            workspace.flush()
+                workspace.flush()
 
         # Set progress to 80% threshold before initiating export streaming
         job_manager.update_progress(
-            job_id,
-            80,
-            "Preprocessing complete. Preparing file export...",
+            job_id, 80, "Preprocessing complete. Preparing file export...",
             current_operation="export_pass",
         )
 

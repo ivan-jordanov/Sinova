@@ -5,6 +5,7 @@ import { usePreprocessingStore } from "../../store/preprocessingStore";
 import { ApplyStackDialog } from "../session/ApplyStackDialog";
 import { useApplyPreprocessing } from "../../hooks/useApplyPreprocessing";
 import { useJobStatus } from "../../hooks/useJobStatus";
+import { useCancelJob } from "../../hooks/useCancelJob";
 
 export function BottomBar() {
   const [opened, setOpened] = useState(false);
@@ -14,6 +15,13 @@ export function BottomBar() {
   const { operations, session, past, future, undo, redo } = usePreprocessingStore();
   const apply = useApplyPreprocessing();
   const jobStatus = useJobStatus(jobId);
+  const cancelJob = useCancelJob();
+
+  const handleCancel = () => {
+    if (jobId) {
+      cancelJob.mutate(jobId);
+    }
+  };
 
   const isJobRunning =
     jobStatus.data?.status === "queued" || jobStatus.data?.status === "running";
@@ -26,7 +34,7 @@ export function BottomBar() {
 
     const status = jobStatus.data.status;
 
-    if (status === "completed" || status === "failed") {
+    if (status === "completed" || status === "failed" || status === "cancelled") {
       if (status === "completed") {
         notifications.show({
           title: "Processing Complete",
@@ -34,7 +42,7 @@ export function BottomBar() {
           color: "green",
           autoClose: 5000,
         });
-      } else {
+      } else if (status === "failed") {
         notifications.show({
           title: "Processing Failed",
           message:
@@ -44,17 +52,23 @@ export function BottomBar() {
           color: "red",
           autoClose: 5000,
         });
+      } else if (status === "cancelled") {
+        notifications.show({
+          title: "Processing Cancelled",
+          message: "The preprocessing job was cancelled",
+          color: "yellow",
+          autoClose: 5000,
+        });
       }
-
+    
       notifiedRef.current = currentKey;
-
-      // Automatically hide the status indicator after 5 seconds
+    
       const timer = setTimeout(() => {
         setJobId(null);
       }, 5000);
-
+    
       return () => clearTimeout(timer);
-    }
+  }
   }, [jobStatus.data, jobId]);
 
   const handleOpenDialog = () => {
@@ -84,6 +98,7 @@ export function BottomBar() {
   const getStatusColor = (status?: string) => {
     if (status === "failed") return "red";
     if (status === "completed") return "green";
+    if (status === "cancelled") return "yellow";
     return "blue";
   };
 
@@ -106,7 +121,7 @@ export function BottomBar() {
           </Text>
           {session.dirty && (
             <Text size="xs" c="yellow">
-              UNSAVED
+              MODIFIED
             </Text>
           )}
           {jobStatus.data && (
@@ -132,6 +147,17 @@ export function BottomBar() {
           >
             Redo
           </Button>
+          {isJobRunning && (
+            <Button
+              size="xs"
+              variant="light"
+              color="red"
+              onClick={handleCancel}
+              loading={cancelJob.isPending}
+            >
+              Cancel
+            </Button>
+          )}
           <Button
             size="xs"
             onClick={handleOpenDialog}

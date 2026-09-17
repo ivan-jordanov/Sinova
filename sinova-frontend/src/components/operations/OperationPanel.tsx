@@ -225,7 +225,7 @@ export function OperationPanel() {
           />
           <Select
             label="Mode"
-            data={["Manual", "Automatic suggestion"]}
+            data={["Manual", "Auto"]}
             value={String(params.mode ?? "Manual")}
             onChange={(next) => next && updateParam("mode", next)}
           />
