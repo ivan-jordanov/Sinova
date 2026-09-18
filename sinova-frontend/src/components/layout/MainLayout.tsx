@@ -22,6 +22,7 @@ export function MainLayout() {
   const operations = usePreprocessingStore((state) => state.operations);
   const selectedSlice = usePreprocessingStore((state) => state.session.selectedSlice);
   const setCOR = useDatasetStore((state) => state.setCOR);
+  const updateMetadata = useDatasetStore((state) => state.updateMetadata);
   
   const metadata = useDatasetStore((state) => state.metadata);
 
@@ -38,15 +39,24 @@ export function MainLayout() {
   useEffect(() => {
     if (!preview.data) return;
 
+    // Handle COR update
     const responseCorOp = preview.data.operations?.find(
       (op) => op.id === "cor_shift" || op.shortName === "cor_shift"
     );
+    if (responseCorOp?.parameters?.value !== undefined) {
+      console.log("Setting COR from preview response:", responseCorOp.parameters.value);
+      setCOR(Number(responseCorOp.parameters.value));
+    }
 
-    if (!responseCorOp?.parameters) return;
-
-    console.log("Setting COR from preview response:", responseCorOp.parameters.value);
-    setCOR(Number(responseCorOp.parameters.value));
-  }, [preview.data, setCOR]);
+    // Handle Projection count update from mutate operation
+    const responseMutateOp = preview.data.operations?.find(
+      (op) => op.id === "mutate" || op.shortName === "mutate" || op.id === "mutate_projections"
+    );
+    if (responseMutateOp?.parameters?.new_count !== undefined) {
+      console.log("Setting projection count from preview response:", responseMutateOp.parameters.new_count);
+      updateMetadata({ projections: Number(responseMutateOp.parameters.new_count) });
+    }
+  }, [preview.data, setCOR, updateMetadata]);
 
   return (
     <AppShell padding={0} className="app-shell">

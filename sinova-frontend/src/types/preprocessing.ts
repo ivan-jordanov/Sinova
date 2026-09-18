@@ -16,7 +16,7 @@ export interface PreprocessingOperation {
   description: string;
   enabled: boolean;
   scope: OperationScope;
-  parameters: Record<string, string | number | boolean>;
+  parameters: Record<string, string | number | boolean | undefined>;
 }
 
 export interface PreviewSession {
@@ -120,6 +120,19 @@ export const initialOperations: PreprocessingOperation[] = [
       kernel_size: 3,
       sigma: 1.0,
     },
+},
+{
+  id: "mutate",
+  name: "Mutate Projections",
+  shortName: "mutate",
+  category: "geometry",
+  description: "Reduces the projection count manually or automatically if the scan consists of more than one full rotation.",
+  enabled: false,
+  scope: "sinogram",
+  parameters: {
+    new_count: undefined,
+    auto: false,
+  },
 },
   {
     id: "cor_shift",

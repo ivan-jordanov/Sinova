@@ -198,13 +198,17 @@ class DatasetService:
         if crop_y is not None:
             self.crop_y = crop_y
     
-    def create_workspace(self, job_id: str) -> ProcessingWorkspace:
+    def create_workspace(
+    self, job_id: str, shape: tuple[int, int, int] | None = None
+    ) -> ProcessingWorkspace:
         """Create a temporary writable workspace for full-stack preprocessing."""
         if not self.is_loaded():
             raise FileNotFoundError("No dataset loaded")
-            
-        metadata = self.get_metadata()
-        shape = (metadata["projection_count"], metadata["height"], metadata["width"])
+    
+        if shape is None:
+            metadata = self.get_metadata()
+            shape = (metadata["projection_count"], metadata["height"], metadata["width"])
+    
         return ProcessingWorkspace(job_id=job_id, shape=shape)
 
     @staticmethod

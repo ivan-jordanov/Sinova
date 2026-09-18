@@ -7,73 +7,61 @@ def normalize(
     data: np.ndarray,
     flat: np.ndarray | float | None = None,
     dark: np.ndarray | float | None = None,
+    is_sinogram: bool = False,
 ) -> np.ndarray:
-    """Normalize projection data using TomoPy or NumPy with flat and dark references."""
+    """Normalize projection or sinogram data strictly using TomoPy."""
     data = data.astype(np.float32)
 
-    if flat is None:
-        flat = 1.0
-    if dark is None:
-        dark = 0.0
+    flat_val = 1.0 if flat is None else flat
+    dark_val = 0.0 if dark is None else dark
 
-    if isinstance(flat, np.ndarray) and flat.ndim == 3:
-        flat = np.mean(flat, axis=0)
-    if isinstance(dark, np.ndarray) and dark.ndim == 3:
-        dark = np.mean(dark, axis=0)
+    # Average 3D flat/dark stacks (N_frames, Y, Z) down to 2D (Y, Z)
+    if isinstance(flat_val, np.ndarray) and flat_val.ndim == 3:
+        flat_val = np.mean(flat_val, axis=0)
+    if isinstance(dark_val, np.ndarray) and dark_val.ndim == 3:
+        dark_val = np.mean(dark_val, axis=0)
 
-    if (
+    # If input is a sinogram (Angles, Width), collapse 2D flat/dark (Height, Width) to 1D profile (Width,)
+    if is_sinogram or (
         data.ndim == 2
-        and isinstance(flat, np.ndarray)
-        and flat.ndim == 2
-        and data.shape[1] == flat.shape[1]
-        and data.shape[0] != flat.shape[0]
+        and isinstance(flat_val, np.ndarray)
+        and flat_val.ndim == 2
+        and data.shape[0] != flat_val.shape[0]
     ):
-        flat = np.mean(flat, axis=0)
+        if isinstance(flat_val, np.ndarray) and flat_val.ndim == 2:
+            flat_val = np.mean(flat_val, axis=0)
+        if isinstance(dark_val, np.ndarray) and dark_val.ndim == 2:
+            dark_val = np.mean(dark_val, axis=0)
 
-    if (
-        data.ndim == 2
-        and isinstance(dark, np.ndarray)
-        and dark.ndim == 2
-        and data.shape[1] == dark.shape[1]
-        and data.shape[0] != dark.shape[0]
-    ):
-        dark = np.mean(dark, axis=0)
+    if data.ndim == 2:
+        data_3d = data[np.newaxis, :, :]
 
-    if tomopy is not None:
-        if data.ndim == 2:
-            data_3d = data[np.newaxis, :, :]
-
-            if isinstance(flat, np.ndarray):
-                flat_3d = (
-                    flat[np.newaxis, :, :]
-                    if flat.ndim == 2
-                    else flat[np.newaxis, np.newaxis, :]
-                )
+        if isinstance(flat_val, np.ndarray):
+            if flat_val.ndim == 1:
+                flat_3d = flat_val[np.newaxis, np.newaxis, :]
+            elif flat_val.ndim == 2:
+                flat_3d = flat_val[np.newaxis, :, :]
             else:
-                flat_3d = np.full_like(data_3d, flat)
+                flat_3d = flat_val
+        else:
+            flat_3d = np.full_like(data_3d, flat_val)
 
-            if isinstance(dark, np.ndarray):
-                dark_3d = (
-                    dark[np.newaxis, :, :]
-                    if dark.ndim == 2
-                    else dark[np.newaxis, np.newaxis, :]
-                )
+        if isinstance(dark_val, np.ndarray):
+            if dark_val.ndim == 1:
+                dark_3d = dark_val[np.newaxis, np.newaxis, :]
+            elif dark_val.ndim == 2:
+                dark_3d = dark_val[np.newaxis, :, :]
             else:
-                dark_3d = np.full_like(data_3d, dark)
+                dark_3d = dark_val
+        else:
+            dark_3d = np.full_like(data_3d, dark_val)
 
-            res = tomopy.normalize(data_3d, flat_3d, dark_3d)
-            return res[0].astype(np.float32)
+        res = tomopy.normalize(data_3d, flat_3d, dark_3d)
+        return res[0].astype(np.float32)
 
-        flat_val = flat if isinstance(flat, np.ndarray) else np.full_like(data, flat)
-        dark_val = dark if isinstance(dark, np.ndarray) else np.full_like(data, dark)
-        return tomopy.normalize(data, flat_val, dark_val).astype(np.float32)
-
-    flat_val = flat.astype(np.float32) if isinstance(flat, np.ndarray) else flat
-    dark_val = dark.astype(np.float32) if isinstance(dark, np.ndarray) else dark
-
-    denom = np.maximum(flat_val - dark_val, 1e-8)
-    normalized = (data - dark_val) / denom
-    return np.clip(normalized, 0.0, None).astype(np.float32)
+    flat_arr = flat_val if isinstance(flat_val, np.ndarray) else np.full_like(data, flat_val)
+    dark_arr = dark_val if isinstance(dark_val, np.ndarray) else np.full_like(data, dark_val)
+    return tomopy.normalize(data, flat_arr, dark_arr).astype(np.float32)
 
 def negative_log(data: np.ndarray, epsilon: float = 1e-8) -> np.ndarray:
     """Apply safe negative logarithm transformation."""
@@ -86,20 +74,76 @@ def denoise_median(data: np.ndarray, kernel_size: int = 3) -> np.ndarray:
     if kernel_size % 2 == 0:
         kernel_size += 1
 
-    if tomopy is not None:
-        return tomopy.misc.corr.median_filter(data, size=kernel_size).astype(
-            np.float32
-        )
-    return ndimage.median_filter(data, size=kernel_size).astype(np.float32)
-
+    # Ensure kernel size is at least 1
+    is_2d = data.ndim == 2
+    # Expand 2D array (H, W) -> 3D (1, H, W) for TomoPy
+    stacked = data[np.newaxis, :, :] if is_2d else data
+    
+    filtered = tomopy.misc.corr.median_filter(stacked, size=kernel_size).astype(np.float32)
+    
+    return filtered[0] if is_2d else filtered
 
 def denoise_gaussian(data: np.ndarray, sigma: float = 1.0) -> np.ndarray:
     """Apply Gaussian blur for smoothing."""
-    if tomopy is not None:
-        return tomopy.misc.corr.gaussian_filter(data, sigma=sigma).astype(
-            np.float32
-        )
-    return ndimage.gaussian_filter(data, sigma=sigma).astype(np.float32)
+    is_2d = data.ndim == 2
+    # Expand 2D (H, W) -> 3D (1, H, W) for TomoPy
+    stacked = data[np.newaxis, :, :] if is_2d else data
+    filtered = tomopy.misc.corr.gaussian_filter(stacked, sigma=sigma).astype(
+        np.float32
+    )
+    return filtered[0] if is_2d else filtered
+
+import numpy as np
+from scipy.interpolate import interp1d
+from scipy.optimize import curve_fit
+
+
+def mutate_projections(
+    data: np.ndarray,
+    auto: bool = True,
+    new_count: int | None = None,
+) -> np.ndarray:
+    """Trim or resample sinogram projections to cover exactly one full 360 degree rotation."""
+    data = data.astype(np.float32)
+    n_frames, width = data.shape
+
+    if auto:
+        air_baseline = np.percentile(data, 95, axis=1, keepdims=True)
+        signal = np.clip(air_baseline - data, 0, None)
+
+        x_coords = np.arange(width)
+        com = (signal * x_coords).sum(axis=1) / (signal.sum(axis=1) + 1e-8)
+
+        com_centered = com - com.mean()
+        fft_spectrum = np.abs(np.fft.rfft(com_centered * np.hanning(n_frames)))
+        k_peak = np.argmax(fft_spectrum[1:]) + 1
+        t0_est = n_frames / k_peak
+
+        def sine_model(n, amplitude, period, phase, offset):
+            return amplitude * np.sin(2 * np.pi * n / period + phase) + offset
+
+        p0 = [com_centered.std() * np.sqrt(2), t0_est, 0.0, com.mean()]
+
+        try:
+            popt, _ = curve_fit(sine_model, np.arange(n_frames), com, p0=p0)
+            # Extracted period T represents frames per single 360 degree rotation
+            target_count = int(np.round(popt[1]))
+        except RuntimeError:
+            target_count = new_count if new_count is not None else n_frames
+    elif auto is False:
+        if new_count is None:
+            raise ValueError("new_count must be provided when auto is set to False.")
+        target_count = new_count
+
+    # If dataset spans 1 rotation or less, leave projections unmodified
+    if target_count >= n_frames or target_count <= 0:
+        return data
+
+    old_grid = np.linspace(0, 1, n_frames)
+    new_grid = np.linspace(0, 1, target_count)
+    interpolator = interp1d(old_grid, data, axis=0, kind="linear")
+
+    return interpolator(new_grid).astype(np.float32)
 
 
 def apply_fov_mask(

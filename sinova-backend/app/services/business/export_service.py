@@ -1,3 +1,4 @@
+import datetime
 import json
 from pathlib import Path
 from typing import Any, Literal
@@ -68,15 +69,16 @@ class ExportService:
         return str(output_path)
 
     def export_mraw_stream(
-        self,
-        workspace_volume: np.memmap,
-        filename: str,
-        job_id: str | None = None,
-        job_manager: Any | None = None,
+    self,
+    workspace_volume: np.memmap,
+    filename: str,
+    job_id: str | None = None,
+    job_manager: Any | None = None,
     ) -> str:
-        """Stream 3D volume frame-by-frame to a raw float32 binary MRAW file."""
+        """Stream 3D volume frame by frame to a raw float32 binary MRAW file and create CIH header."""
         output_path = self.output_dir / f"{filename}.mraw"
-        num_frames = workspace_volume.shape[0]
+        cih_path = self.output_dir / f"{filename}.cih"
+        num_frames, height, width = workspace_volume.shape
 
         with open(output_path, "wb") as f:
             for i in range(num_frames):
@@ -93,7 +95,25 @@ class ExportService:
                     f"Exporting MRAW: frame {i + 1}/{num_frames}",
                 )
 
+        self._write_cih_header(cih_path, num_frames, height, width)
+
         return str(output_path)
+
+
+    def _write_cih_header(self, path: Path, num_frames: int, height: int, width: int) -> None:
+        header_content = f"""[Main]
+        File Format : MRW
+        Image Width : {width}
+        Image Height : {height}
+        Total Frame : {num_frames}
+        Record Rate(fps) : 1000
+        Shutter Speed(s) : 1/1000
+        Color Format : Mono
+        Bit Depth : 32
+        EffectiveBit Depth : 32
+        Comment : Exported Preprocessed Volume
+        """
+        path.write_text(header_content, encoding="utf-8")
 
     def export_dat_stream(
         self,

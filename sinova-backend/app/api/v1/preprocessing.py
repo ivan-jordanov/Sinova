@@ -8,7 +8,7 @@ from app.schemas.preprocessing import (
 )
 from app.services.business.dataset_access import get_dataset_service
 from app.services.business.job_manager import ProcessingJob, get_job_manager
-from app.services.business.operation_executor import run_preprocessing_job
+from app.services.processing.processing_parallel import run_preprocessing_job
 
 router = APIRouter(prefix="/preprocessing", tags=["preprocessing"])
 
@@ -57,6 +57,15 @@ AVAILABLE_OPERATIONS = [
         description="Apply median or Gaussian spatial filtering",
         requires=[],
         scope=OPERATION_SCOPES["denoise"],
+    ),
+    OperationInfo(
+        id="mutate",
+        name="Mutate Projections",
+        short_name="mutate",
+        category="geometry",
+        description="Reduces the projection count manually or automatically if the scan consists of more than one full rotation",
+        requires=[],
+        scope=OPERATION_SCOPES["mutate"],
     ),
     OperationInfo(
         id="cor_shift",

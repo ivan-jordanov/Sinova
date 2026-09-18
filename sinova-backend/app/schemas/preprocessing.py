@@ -87,20 +87,10 @@ class PreprocessingConfiguration(BaseModel):
                 )
 
     def validate_context(self, context: DataContext) -> None:
-        """Validate that enabled operations are permitted in the current data context.
-        
-        Raises:
-            ValueError: If an operation is applied to an incompatible context
-        """
-        for op in self.operations:
-            if not op.enabled:
-                continue
-            
-            if op.scope != "both" and op.scope != context:
-                raise ValueError(
-                    f"Operation '{op.name}' cannot be applied to a {context} preview. "
-                    f"It is only valid for {op.scope}s."
-                )
+        self.operations = [
+            op for op in self.operations
+            if op.scope == "both" or op.scope == context
+        ]
 
 
 class ApplyPreprocessingRequest(BaseModel):

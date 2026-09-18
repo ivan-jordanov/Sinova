@@ -272,6 +272,23 @@ export function OperationPanel() {
         </>
       )}
 
+      {operation.id === "mutate" && (
+        <Stack gap="xs">
+          <DeferredNumberInput
+            label="New Projection Count"
+            decimalScale={1}
+            value={Number(params.new_count ?? 0.0)}
+            onCommit={(val) => updateParam("new_count", val)}
+          />
+          <Switch
+            label="Estimate from sinogram"
+            checked={Boolean(params.auto)}
+            onChange={(e) => updateParam("auto", e.currentTarget.checked)}
+            mt="xs"
+          />
+        </Stack>
+      )}
+
       {/* DENOISE */}
       {operation.id === "denoise" && (
         <>
