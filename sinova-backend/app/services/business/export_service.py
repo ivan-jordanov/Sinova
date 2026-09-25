@@ -5,6 +5,7 @@ from typing import Any, Literal
 import numpy as np
 import tifffile
 import pydicom
+import textwrap
 from pydicom.dataset import FileDataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian, generate_uid
 
@@ -101,7 +102,7 @@ class ExportService:
 
 
     def _write_cih_header(self, path: Path, num_frames: int, height: int, width: int) -> None:
-        header_content = f"""[Main]
+        header_content = textwrap.dedent(f"""[Main]
         File Format : MRW
         Image Width : {width}
         Image Height : {height}
@@ -112,7 +113,7 @@ class ExportService:
         Bit Depth : 32
         EffectiveBit Depth : 32
         Comment : Exported Preprocessed Volume
-        """
+        """)
         path.write_text(header_content, encoding="utf-8")
 
     def export_dat_stream(

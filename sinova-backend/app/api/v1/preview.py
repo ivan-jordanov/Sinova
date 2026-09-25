@@ -36,7 +36,7 @@ def projection(request: PreviewRequest) -> PreviewResponse:
             except ValueError as e:
                 raise HTTPException(status_code=422, detail=str(e))
 
-            processed_data = apply_operations_to_data(frame_data, request.configuration)
+            processed_data = apply_operations_to_data(frame_data, request.configuration, request.context)
             processed = processed_data[0]
             configuration = processed_data[1]
 
@@ -95,7 +95,7 @@ def sinogram(request: PreviewRequest) -> PreviewResponse:
             except ValueError as e:
                 raise HTTPException(status_code=422, detail=str(e))
 
-            processed_data = apply_operations_to_data(sinogram_data, request.configuration)
+            processed_data = apply_operations_to_data(sinogram_data, request.configuration, request.context)
             processed = processed_data[0]
             configuration = processed_data[1]
 

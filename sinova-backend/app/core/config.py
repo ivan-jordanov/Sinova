@@ -14,7 +14,7 @@ OPERATION_DEPENDENCIES: dict[str, list[str]] = {
     "cor_shift": [],
     "ring_filter_fw": [],
     "ring_filter_vo": [],
-    "neural": [],
+    "ring_filter_inr": [],
 }
 
 # Operation scope: Specifies valid preview context applicability ("projection", "sinogram", or "both")
@@ -29,7 +29,7 @@ OPERATION_SCOPES: dict[str, str] = {
     "cor_shift": "sinogram",
     "ring_filter_fw": "sinogram",
     "ring_filter_vo": "sinogram",
-    "neural": "sinogram",
+    "ring_filter_inr": "sinogram",
 }
 
 class Settings:

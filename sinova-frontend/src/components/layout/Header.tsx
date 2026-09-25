@@ -177,8 +177,8 @@ export function Header() {
           API · {backendHealth.isSuccess ? "READY" : "OFFLINE"}
         </Badge>
 
-        <Badge color={"yellow"} variant="light">
-          CUDA · {"OFFLINE"}
+        <Badge color={backendHealth.data?.cuda_available ? "teal" : "yellow"} variant="light">
+          CUDA · {backendHealth.data?.cuda_available ? "READY" : "OFFLINE"}
         </Badge>
       </Group>
 
@@ -186,6 +186,7 @@ export function Header() {
         <ActionIcon
           variant="subtle"
           disabled={!past.length}
+          size="sm"
           onClick={undo}
           aria-label="Undo"
         >
@@ -194,6 +195,7 @@ export function Header() {
         <ActionIcon
           variant="subtle"
           disabled={!future.length}
+          size="sm"
           onClick={redo}
           aria-label="Redo"
         >
@@ -206,9 +208,6 @@ export function Header() {
         >
           {isDark ? "☼" : "☾"}
         </ActionIcon>
-        <Button variant="default" size="xs" disabled={!activeMetadata}>
-          Export
-        </Button>
       </Group>
     </Group>
   );

@@ -29,6 +29,7 @@ export async function requestPreview(
   path: string,
   request: PreviewRequest
 ): Promise<PreviewResult> {
+  console.log("Sending preview request:", request);
   const response = await apiClient.request<{
     context: "projection" | "sinogram";
     width: number;
@@ -42,7 +43,7 @@ export async function requestPreview(
     message: string;
     operations?: PreprocessingOperation[];
   }>(path, { method: "POST", body: JSON.stringify(request) });
-
+  console.log("Preview response:", response);
   // Due to me trying to fix a bug to implement a feature which caused too many server-state and client-state mismatches, we now have to normalize the operations returned by the backend to ensure that they have the correct property names. This is a temporary fix until the backend is updated to return the correct property names.
   // However, we dont need to return operations necessarily so rewrite the frontend and backend in the future to fix this
   const rawOps = response.operations ?? request.configuration.operations;

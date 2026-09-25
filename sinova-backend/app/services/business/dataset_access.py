@@ -197,7 +197,40 @@ class DatasetService:
 
         if crop_y is not None:
             self.crop_y = crop_y
-    
+            
+    def update_metadata(
+        self,
+        projection_count: int | None = None,
+        height: int | None = None,
+        width: int | None = None,
+        **kwargs,
+    ) -> DatasetMetadata:
+        """
+        Update active dataset metadata when operations mutate shape or projection count.
+        """
+        if self.metadata is None:
+            raise DatasetNotLoaded("No dataset loaded")
+
+        updates = {}
+        if projection_count is not None:
+            updates["projection_count"] = projection_count
+        if height is not None:
+            updates["height"] = height
+        if width is not None:
+            updates["width"] = width
+        updates.update(kwargs)
+
+        if isinstance(self.metadata, dict):
+            self.metadata.update(updates)
+        else:
+            for key, val in updates.items():
+                if hasattr(self.metadata, key):
+                    setattr(self.metadata, key, val)
+                elif hasattr(self.metadata, "__setitem__"):
+                    self.metadata[key] = val
+
+        return self.metadata
+        
     def create_workspace(
     self, job_id: str, shape: tuple[int, int, int] | None = None
     ) -> ProcessingWorkspace:

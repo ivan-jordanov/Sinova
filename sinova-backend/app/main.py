@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+import torch
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import ingestion, preprocessing, preview
@@ -19,8 +20,8 @@ app.add_middleware(
 
 
 @app.get("/api/v1/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "service": "sinova-backend"}
+def health() -> dict[str, str | bool]:
+    return {"status": "ok", "service": "sinova-backend", "cuda_available": torch.cuda.is_available(),}
 
 
 

@@ -1,5 +1,6 @@
 import {
   Accordion,
+  ActionIcon,
   Button,
   Divider,
   Group,
@@ -10,6 +11,7 @@ import {
   Switch,
   Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { browseDatasetFile } from "../../api/dataset";
@@ -45,6 +47,21 @@ function DeferredNumberInput({ value, onCommit, ...props }: DeferredInputProps) 
       onKeyDown={(e) => e.key === "Enter" && commit()}
       onBlur={() => commit()}
     />
+  );
+}
+
+function FieldLabel({ label, tooltip }: { label: string; tooltip: string }) {
+  return (
+    <Group gap={4} align="center" mb={2}>
+      <Text size="sm" fw={500}>
+        {label}
+      </Text>
+      <Tooltip label={tooltip} multiline w={240} withArrow position="right">
+        <ActionIcon variant="subtle" color="gray" size="xs" aria-label={label}>
+          🛈
+        </ActionIcon>
+      </Tooltip>
+    </Group>
   );
 }
 
@@ -101,7 +118,6 @@ export function OperationPanel() {
       setDarkInput(String(params.dark ?? "Auto"));
       setFlatInput(String(params.flat ?? "Auto"));
     }
-
   }, [operation.id, params.dark, params.flat, params.value]);
 
   const updateParam = (key: string, val: unknown, altKey?: string) => {
@@ -164,9 +180,10 @@ export function OperationPanel() {
       {operation.id === "normalization" && (
         <>
           <Stack gap={4}>
-            <Text size="sm" fw={500}>
-              Dark Reference
-            </Text>
+            <FieldLabel
+              label="Dark Reference"
+              tooltip="Path to dark field image or 'Auto' to automatically find and average dark frames."
+            />
             <Group gap="xs">
               <TextInput
                 style={{ flex: 1 }}
@@ -185,9 +202,10 @@ export function OperationPanel() {
           </Stack>
 
           <Stack gap={4}>
-            <Text size="sm" fw={500}>
-              Flat Reference
-            </Text>
+            <FieldLabel
+              label="Flat Reference"
+              tooltip="Path to flat field image or 'Auto' to automatically find and average flat frames."
+            />
             <Group gap="xs">
               <TextInput
                 style={{ flex: 1 }}
@@ -217,41 +235,66 @@ export function OperationPanel() {
       {/* ATTENUATION CLIPPING */}
       {operation.id === "attenuation" && (
         <>
-          <DeferredNumberInput
-            label="Threshold"
-            decimalScale={2}
-            value={Number(params.max_value ?? params.threshold ?? 1.0)}
-            onCommit={(val) => updateParam("threshold", val, "max_value")}
-          />
-          <Select
-            label="Mode"
-            data={["Manual", "Auto"]}
-            value={String(params.mode ?? "Manual")}
-            onChange={(next) => next && updateParam("mode", next)}
-          />
+          <div>
+            <FieldLabel
+              label="Threshold"
+              tooltip="Upper bound intensity clipping value to eliminate extreme beam hardening or unattenuated ray spikes."
+            />
+            <DeferredNumberInput
+              decimalScale={2}
+              value={Number(params.max_value ?? params.threshold ?? 1.0)}
+              onCommit={(val) => updateParam("threshold", val, "max_value")}
+            />
+          </div>
+          <div>
+            <FieldLabel
+              label="Mode"
+              tooltip="'Manual' uses the specified threshold value; 'Auto' estimates threshold from intensity percentiles."
+            />
+            <Select
+              data={["Manual", "Auto"]}
+              value={String(params.mode ?? "Manual")}
+              onChange={(next) => next && updateParam("mode", next)}
+            />
+          </div>
         </>
       )}
 
       {/* FOV MASK */}
       {operation.id === "fov-mask" && (
         <>
-          <DeferredNumberInput
-            label="Radius / Margin"
-            decimalScale={2}
-            value={Number(params.radius ?? params.margin ?? 0.95)}
-            onCommit={(val) => updateParam("margin", val, "radius")}
-          />
-          <Group grow>
-            <DeferredNumberInput
-              label="Center X"
-              value={Number(params.center_x ?? 0)}
-              onCommit={(val) => updateParam("center_x", val)}
+          <div>
+            <FieldLabel
+              label="Radius / Margin"
+              tooltip="Normalized field-of-view radius (e.g. 0.95 = 95% of beam area)."
             />
             <DeferredNumberInput
-              label="Center Y"
-              value={Number(params.center_y ?? 0)}
-              onCommit={(val) => updateParam("center_y", val)}
+              decimalScale={2}
+              value={Number(params.radius ?? params.margin ?? 0.95)}
+              onCommit={(val) => updateParam("margin", val, "radius")}
             />
+          </div>
+          <Group grow align="flex-start">
+            <div>
+              <FieldLabel
+                label="Center X"
+                tooltip="Horizontal offset of the circular beam mask center."
+              />
+              <DeferredNumberInput
+                value={Number(params.center_x ?? 0)}
+                onCommit={(val) => updateParam("center_x", val)}
+              />
+            </div>
+            <div>
+              <FieldLabel
+                label="Center Y"
+                tooltip="Vertical offset of the circular beam mask center."
+              />
+              <DeferredNumberInput
+                value={Number(params.center_y ?? 0)}
+                onCommit={(val) => updateParam("center_y", val)}
+              />
+            </div>
           </Group>
         </>
       )}
@@ -259,27 +302,43 @@ export function OperationPanel() {
       {/* CROP & PAD BEAM */}
       {operation.id === "crop-pad-beam" && (
         <>
-          <DeferredNumberInput
-            label="Padding (px)"
-            value={Number(params.pad ?? 128)}
-            onCommit={(val) => updateParam("pad", val)}
-          />
-          <DeferredNumberInput
-            label="Edge Average Window (px)"
-            value={Number(params.navg ?? 8)}
-            onCommit={(val) => updateParam("navg", val)}
-          />
+          <div>
+            <FieldLabel
+              label="Padding (px)"
+              tooltip="Number of pixels padded at the sinogram boundaries to prevent circular FBP reconstruction artifacts."
+            />
+            <DeferredNumberInput
+              value={Number(params.pad ?? 128)}
+              onCommit={(val) => updateParam("pad", val)}
+            />
+          </div>
+          <div>
+            <FieldLabel
+              label="Edge Average Window (px)"
+              tooltip="Number of outer boundary pixels averaged to create smooth padding transitions."
+            />
+            <DeferredNumberInput
+              value={Number(params.navg ?? 8)}
+              onCommit={(val) => updateParam("navg", val)}
+            />
+          </div>
         </>
       )}
 
+      {/* MUTATE PROJECTIONS */}
       {operation.id === "mutate" && (
         <Stack gap="xs">
-          <DeferredNumberInput
-            label="New Projection Count"
-            decimalScale={1}
-            value={Number(params.new_count ?? 0.0)}
-            onCommit={(val) => updateParam("new_count", val)}
-          />
+          <div>
+            <FieldLabel
+              label="New Projection Count"
+              tooltip="Target angular resampling count for angular downsampling or interpolation."
+            />
+            <DeferredNumberInput
+              decimalScale={1}
+              value={Number(params.new_count ?? 0.0)}
+              onCommit={(val) => updateParam("new_count", val)}
+            />
+          </div>
           <Switch
             label="Estimate from sinogram"
             checked={Boolean(params.auto)}
@@ -292,25 +351,40 @@ export function OperationPanel() {
       {/* DENOISE */}
       {operation.id === "denoise" && (
         <>
-          <Select
-            label="Method"
-            data={["median", "gaussian"]}
-            value={String(params.method ?? "median")}
-            onChange={(next) => next && updateParam("method", next)}
-          />
+          <div>
+            <FieldLabel
+              label="Method"
+              tooltip="Spatial filter type: Median (preserves sharp edges) or Gaussian (smooths high-frequency noise)."
+            />
+            <Select
+              data={["median", "gaussian"]}
+              value={String(params.method ?? "median")}
+              onChange={(next) => next && updateParam("method", next)}
+            />
+          </div>
           {params.method === "gaussian" ? (
-            <DeferredNumberInput
-              label="Sigma"
-              decimalScale={2}
-              value={Number(params.sigma ?? 1.0)}
-              onCommit={(val) => updateParam("sigma", val)}
-            />
+            <div>
+              <FieldLabel
+                label="Sigma"
+                tooltip="Standard deviation for Gaussian kernel smoothing."
+              />
+              <DeferredNumberInput
+                decimalScale={2}
+                value={Number(params.sigma ?? 1.0)}
+                onCommit={(val) => updateParam("sigma", val)}
+              />
+            </div>
           ) : (
-            <DeferredNumberInput
-              label="Kernel Size"
-              value={Number(params.kernel_size ?? 3)}
-              onCommit={(val) => updateParam("kernel_size", val)}
-            />
+            <div>
+              <FieldLabel
+                label="Kernel Size"
+                tooltip="Median filter window width in pixels (must be an odd integer, e.g., 3, 5)."
+              />
+              <DeferredNumberInput
+                value={Number(params.kernel_size ?? 3)}
+                onCommit={(val) => updateParam("kernel_size", val)}
+              />
+            </div>
           )}
         </>
       )}
@@ -318,12 +392,17 @@ export function OperationPanel() {
       {/* CENTER OF ROTATION */}
       {operation.id === "cor_shift" && (
         <Stack gap="xs">
-          <DeferredNumberInput
-            label="Center of rotation value"
-            decimalScale={1}
-            value={Number(params.value ?? 0.0)}
-            onCommit={(val) => updateParam("value", val)}
-          />
+          <div>
+            <FieldLabel
+              label="Center of rotation value"
+              tooltip="Rotation axis location on the detector in pixels. Incorrect values cause tuning fork / double edge artifacts."
+            />
+            <DeferredNumberInput
+              decimalScale={1}
+              value={Number(params.value ?? 0.0)}
+              onCommit={(val) => updateParam("value", val)}
+            />
+          </div>
           <Switch
             label="Estimate from projections"
             checked={Boolean(params.cor_estimation)}
@@ -336,66 +415,157 @@ export function OperationPanel() {
       {/* FOURIER-WAVELET DESTRIPING */}
       {operation.id === "fourier-wavelet" && (
         <>
-          <DeferredNumberInput
-            label="Decomposition Level"
-            value={Number(params.level ?? 5)}
-            onCommit={(val) => updateParam("level", val)}
-          />
-          <DeferredNumberInput
-            label="Damping Factor (Sigma / Parameter)"
-            decimalScale={2}
-            value={Number(params.sigma ?? params.parameter ?? 0.1)}
-            onCommit={(val) => updateParam("parameter", val, "sigma")}
-          />
+          <div>
+            <FieldLabel
+              label="Decomposition Level"
+              tooltip="Wavelet transform decomposition depth. Higher levels isolate broader ring artifacts."
+            />
+            <DeferredNumberInput
+              value={Number(params.level ?? 5)}
+              onCommit={(val) => updateParam("level", val)}
+            />
+          </div>
+          <div>
+            <FieldLabel
+              label="Damping Factor (Sigma / Parameter)"
+              tooltip="Gaussian damping factor in Fourier space. Higher values remove stronger stripes but risk blurring."
+            />
+            <DeferredNumberInput
+              decimalScale={2}
+              value={Number(params.sigma ?? params.parameter ?? 0.1)}
+              onCommit={(val) => updateParam("parameter", val, "sigma")}
+            />
+          </div>
         </>
       )}
 
       {/* VO'S SORTING DESTRIPING */}
       {operation.id === "vo-sorting" && (
         <>
-          <DeferredNumberInput
-            label="Filter Window Size"
-            value={Number(params.window ?? 21)}
-            onCommit={(val) => updateParam("window", val)}
-          />
-          <DeferredNumberInput
-            label="Filtering Strength"
-            decimalScale={2}
-            value={Number(params.strength ?? 0.6)}
-            onCommit={(val) => updateParam("strength", val)}
-          />
+          <div>
+            <FieldLabel
+              label="Filter Window Size"
+              tooltip="Moving average window width for Vo's sorting destriping algorithm."
+            />
+            <DeferredNumberInput
+              value={Number(params.window ?? 21)}
+              onCommit={(val) => updateParam("window", val)}
+            />
+          </div>
+          <div>
+            <FieldLabel
+              label="Filtering Strength"
+              tooltip="Relative response filtering strength for detecting ring artifacts."
+            />
+            <DeferredNumberInput
+              decimalScale={2}
+              value={Number(params.strength ?? 0.6)}
+              onCommit={(val) => updateParam("strength", val)}
+            />
+          </div>
         </>
       )}
 
       {/* NEURAL DESTRIPING */}
       {operation.id === "neural" && (
         <>
-          <Select
-            label="Neural Model"
-            data={["Default", "DeepStriping-v1", "U-Net-Tomo"]}
-            value={String(params.model ?? "Default")}
-            onChange={(next) => next && updateParam("model", next)}
-          />
-          <DeferredNumberInput
-            label="Model Strength"
-            decimalScale={2}
-            value={Number(params.strength ?? 0.5)}
-            onCommit={(val) => updateParam("strength", val)}
-          />
+          <div>
+            <FieldLabel
+              label="Neural Model"
+              tooltip="Pretrained deep learning model architecture for ring artifact removal."
+            />
+            <Select
+              data={["Default", "DeepStriping-v1", "U-Net-Tomo"]}
+              value={String(params.model ?? "Default")}
+              onChange={(next) => next && updateParam("model", next)}
+            />
+          </div>
+          <div>
+            <FieldLabel
+              label="Model Strength"
+              tooltip="Blending weight between original and deep learning corrected sinograms."
+            />
+            <DeferredNumberInput
+              decimalScale={2}
+              value={Number(params.strength ?? 0.5)}
+              onCommit={(val) => updateParam("strength", val)}
+            />
+          </div>
         </>
       )}
 
-      {operation.id !== "cor" && (
-        <Accordion variant="contained">
-          <Accordion.Item value="advanced">
-            <Accordion.Control>Advanced</Accordion.Control>
-            <Accordion.Panel>
-              <Text size="xs" c="dimmed">
-                Additional controls will be connected to the FastAPI preview contract.
-              </Text>
-            </Accordion.Panel>
-          </Accordion.Item>
-        </Accordion>
+      {/* UNSUPERVISED INR DESTRIPING (Shi et al., 2024) */}
+      {(operation.id === "ring_filter_inr" || operation.id === "ring-filter-inr") && (
+        <>
+          <div>
+            <FieldLabel
+              label="Iterations"
+              tooltip="Total optimization steps. Use ~1000 for fast previewing or 3000-5000 for final reconstruction."
+            />
+            <DeferredNumberInput
+              value={Number(params.iterations ?? 1500)}
+              step={100}
+              min={100}
+              max={10000}
+              onCommit={(val) => updateParam("iterations", val)}
+            />
+          </div>
+
+          <div>
+            <FieldLabel
+              label="Learning Rate (lr)"
+              tooltip="Optimizer step size for coordinate feature grids (default: 1e-4)."
+            />
+            <DeferredNumberInput
+              decimalScale={6}
+              step={0.00005}
+              value={Number(params.lr ?? 0.0001)}
+              onCommit={(val) => updateParam("lr", val)}
+            />
+          </div>
+
+          <div>
+            <FieldLabel
+              label="Residual Factor (kappa)"
+              tooltip="Controls high-frequency detail re-injection (0.0 = low noise, 0.5 = balanced, 1.0 = maximum edge sharpness)."
+            />
+            <DeferredNumberInput
+              decimalScale={2}
+              step={0.05}
+              max={1.0}
+              value={Number(params.kappa ?? 0.5)}
+              onCommit={(val) => updateParam("kappa", val)}
+            />
+          </div>
+
+          <div>
+            <FieldLabel
+              label="Stripe Mode"
+              tooltip="'matrix' fits a 2D spatially varying artifact matrix (recommended for real micro-CT). 'column' enforces strict 1D detector column offsets."
+            />
+            <Select
+              data={[
+                { value: "matrix", label: "Matrix (2D spatially varying)" },
+                { value: "column", label: "Column (1D detector constant)" },
+              ]}
+              value={String(params.stripe_mode ?? "matrix")}
+              onChange={(next) => next && updateParam("stripe_mode", next)}
+            />
+          </div>
+
+          <div>
+            <FieldLabel
+              label="Defect Threshold"
+              tooltip="Angular difference threshold for detecting and masking dead or non-responsive detector columns (default: 1e-6)."
+            />
+            <DeferredNumberInput
+              decimalScale={8}
+              step={1e-7}
+              value={Number(params.defect_threshold ?? 0.000001)}
+              onCommit={(val) => updateParam("defect_threshold", val)}
+            />
+          </div>
+        </>
       )}
     </Stack>
   );

@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import ndimage
+from app.services.processing.neural_destriping import INRDestripeConfig, train_inr_destriping
 
 import tomopy
 
@@ -242,6 +243,28 @@ def ring_filter_vo(
     ).astype(np.float32)
 
     return res[0] if is_2d else res
+
+def ring_filter_inr(
+    data: np.ndarray,
+    iterations: int = 1500,
+    lr: float = 1e-4,
+    kappa: float = 0.5,
+    stripe_mode: str = "matrix",
+    defect_threshold: float = 1e-6,
+) -> np.ndarray:
+    """Zero-shot INR ring/stripe removal (Shi et al. 2024) on one 2D (angles, detectors) sinogram.
+    Trains a fresh network per call -- there is no model state to reuse across slices."""
+
+    cfg = INRDestripeConfig(
+        iterations=iterations,
+        lr=lr,
+        kappa=kappa,
+        stripe_mode=stripe_mode,
+        defect_threshold=defect_threshold,
+        seed=0,
+    )
+    result = train_inr_destriping(data.astype(np.float32), cfg)
+    return result.corrected.astype(np.float32)
 
 
 def clip_attenuation(

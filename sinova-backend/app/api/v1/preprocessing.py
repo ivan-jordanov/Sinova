@@ -95,13 +95,13 @@ AVAILABLE_OPERATIONS = [
         scope=OPERATION_SCOPES["ring_filter_vo"],
     ),
     OperationInfo(
-        id="neural",
+        id="ring-filter-inr",
         name="Neural Destriping",
-        short_name="neural",
+        short_name="ring_filter_inr",
         category="destriping",
         description="Remove ring artifacts using deep neural model processing",
         requires=[],
-        scope=OPERATION_SCOPES["neural"],
+        scope=OPERATION_SCOPES["ring_filter_inr"],
     ),
 ]
 

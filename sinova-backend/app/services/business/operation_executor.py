@@ -31,7 +31,7 @@ dataset_service = get_dataset_service()
 
 
 def apply_single_operation(
-    data: np.ndarray, operation: Operation
+    data: np.ndarray, operation: Operation, context: DataContext = "projection"
 ) -> tuple[np.ndarray, Operation]:
     """Apply a single preprocessing operation to an array using configured parameters."""
     if not operation.enabled:
@@ -39,6 +39,8 @@ def apply_single_operation(
 
     short_name = operation.short_name
     params = operation.parameters
+
+    # In operation_executor.py
 
     if short_name == "normalize":
         flat_param = params.get("flat")
@@ -63,7 +65,9 @@ def apply_single_operation(
         elif getattr(dataset_service, "reader", None) and hasattr(dataset_service.reader, "get_dark"):
             dark_ref = dataset_service.reader.get_dark()
 
-        data = preprocessing_ops.normalize(data, flat=flat_ref, dark=dark_ref)
+        # Explicitly pass whether the current execution context is a sinogram
+        is_sino = (context == "sinogram")
+        data = preprocessing_ops.normalize(data, flat=flat_ref, dark=dark_ref, is_sinogram=is_sino)
 
         if params.get("logarithm", False):
             data = preprocessing_ops.negative_log(data)
@@ -130,15 +134,21 @@ def apply_single_operation(
     
     elif short_name == "mutate":
         auto = params.get("auto", True)
-        if auto == False:
+        if auto is False or str(auto).lower() == "false":
             new_count = int(params.get("new_count", 0))
             data = preprocessing_ops.mutate_projections(data, auto=False, new_count=new_count)
-        elif auto == True:
+        elif auto is True or str(auto).lower() == "true":
             data = preprocessing_ops.mutate_projections(data, auto=True)
         else:
             raise ValueError(f"Unknown mutate mode: {auto}")
-        
-        params["new_count"] = data.shape[0]  # Update the new_count parameter to reflect the actual number of projections after mutation
+
+        actual_count = int(data.shape[0])
+        params["new_count"] = actual_count
+
+        # Sync dataset service state
+        dataset_service = get_dataset_service()
+        if dataset_service.is_loaded():
+            dataset_service.update_metadata(projection_count=actual_count)
 
         return data, operation
 
@@ -167,6 +177,23 @@ def apply_single_operation(
 
         data = preprocessing_ops.ring_filter_vo(data, size=window)
         return data, operation
+    
+    elif short_name == "ring_filter_inr":
+        iterations = int(params.get("iterations", 1500))
+        lr = float(params.get("lr", 1e-4))
+        kappa = float(params.get("kappa", 0.5))
+        stripe_mode = params.get("stripe_mode", "matrix")
+        defect_threshold = float(params.get("defect_threshold", 1e-6))
+
+        data = preprocessing_ops.ring_filter_inr(
+            data,
+            iterations=iterations,
+            lr=lr,
+            kappa=kappa,
+            stripe_mode=stripe_mode,
+            defect_threshold=defect_threshold,
+        )
+        return data, operation
 
     else:
         raise ValueError(f"Unknown operation: {short_name}")
@@ -175,6 +202,7 @@ def apply_single_operation(
 def apply_operations_to_data(
     data: np.ndarray,
     configuration: PreprocessingConfiguration,
+    context: DataContext = "projection"
 ) -> tuple[np.ndarray, PreprocessingConfiguration]:
     """
     Apply all enabled operations to data in order.
@@ -184,7 +212,7 @@ def apply_operations_to_data(
     for i, operation in enumerate(configuration.operations):
         if operation.enabled:
             try:
-                result, updated_operation = apply_single_operation(result, operation)
+                result, updated_operation = apply_single_operation(result, operation, context)
                 configuration.operations[i] = updated_operation
             except Exception as e:
                 raise ValueError(

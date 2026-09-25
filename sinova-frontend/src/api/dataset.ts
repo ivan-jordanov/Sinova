@@ -61,6 +61,7 @@ export async function getDatasetMetadata(): Promise<DatasetMetadata> {
 export interface BackendHealth {
   status: string;
   service: string;
+  cuda_available: boolean;
 }
 
 export function getBackendHealth() {
