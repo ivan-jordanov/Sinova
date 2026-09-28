@@ -1,6 +1,10 @@
 import numpy as np
+from scipy.interpolate import interp1d
+from scipy.optimize import curve_fit
 from scipy import ndimage
 from app.services.processing.neural_destriping import INRDestripeConfig, train_inr_destriping
+import multiprocessing
+import torch
 
 import tomopy
 
@@ -94,9 +98,6 @@ def denoise_gaussian(data: np.ndarray, sigma: float = 1.0) -> np.ndarray:
     )
     return filtered[0] if is_2d else filtered
 
-import numpy as np
-from scipy.interpolate import interp1d
-from scipy.optimize import curve_fit
 
 
 def mutate_projections(
@@ -254,6 +255,10 @@ def ring_filter_inr(
 ) -> np.ndarray:
     """Zero-shot INR ring/stripe removal (Shi et al. 2024) on one 2D (angles, detectors) sinogram.
     Trains a fresh network per call -- there is no model state to reuse across slices."""
+    
+    if not torch.cuda.is_available() and multiprocessing.parent_process() is not None:
+        torch.set_num_threads(1)
+
 
     cfg = INRDestripeConfig(
         iterations=iterations,

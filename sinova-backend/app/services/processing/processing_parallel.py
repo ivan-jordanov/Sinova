@@ -43,11 +43,15 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from app.core.config import GPU_BOUND_OPERATIONS
 from app.schemas.preprocessing import Operation, PreprocessingConfiguration
 from app.services.business.dataset_access import DatasetService, get_dataset_service
 from app.services.business.export_service import ExportService
 from app.services.business.job_manager import JobManager, get_job_manager
 from app.services.business.operation_executor import apply_operations_to_data
+import logging
+
+logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 16
 
@@ -191,6 +195,69 @@ def _copy_projection_chunk(src: _MemmapDescriptor, dst: _MemmapDescriptor, start
     dst_vol[start:end] = src_vol[start:end]
     dst_vol.flush()
     return end - start
+
+def _check_cuda_available() -> bool:
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+
+
+def _run_gpu_sinogram_pass(
+    job_id: str,
+    job_manager: JobManager,
+    dst: _MemmapDescriptor,
+    sino_ops: list[Operation],
+    num_slices: int,
+    *,
+    total_steps: int,
+    completed_ref: list,
+) -> bool:
+    """
+    Runs sino_ops sequentially, single-process, when the enabled set
+    includes a GPU-bound op (see GPU_BOUND_OPERATIONS). Deliberately
+    bypasses the persistent CPU pool: os.cpu_count() worker processes
+    each opening their own CUDA context on one GPU is VRAM growth and
+    driver-level thrashing, not parallelism. One sequential pass is the
+    right amount of concurrency for one device.
+
+    Runs in the calling thread, already off the event loop (see
+    run_preprocessing_job), so cancellation/progress are checked
+    directly against job_manager instead of through the chunk-Future
+    bookkeeping _run_chunked_processes needs for cross-process results.
+
+    Any CPU-only ops mixed into sino_ops (e.g. ring_filter_fw staged
+    before ring_filter_inr) run here too, in their original order via
+    apply_operations_to_data -- exact ordering is preserved, at the
+    cost of not CPU-parallelizing those cheap filters for this pass.
+    That's the right trade once a GPU op dominates per-slice cost.
+    """
+
+    sino_config = PreprocessingConfiguration(operations=sino_ops)
+    dst_vol = dst.open()
+
+    for y in range(num_slices):
+        current_job = job_manager.get_job(job_id)
+        if current_job and current_job.status == "cancelled":
+            return True
+
+        sinogram = dst_vol[:, y, :]
+        processed, _ = apply_operations_to_data(sinogram, sino_config)
+        dst_vol[:, y, :] = processed
+
+        completed_ref[0] += 1
+        progress = int((completed_ref[0] / total_steps) * 80)
+        job_manager.update_progress(
+            job_id, progress, f"Sinogram pass (GPU): {y + 1}/{num_slices}",
+            current_operation="sinogram_pass_gpu",
+        )
+
+        if (y + 1) % 25 == 0:          # periodic flush; this pass can run for hours
+            dst_vol.flush()
+
+    dst_vol.flush()
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -393,17 +460,32 @@ def execute_preprocessing_pipeline(
 
         # Sinogram Operations Pass (Scaled to 0%-80% range)
         if sino_ops:
-            sino_config = PreprocessingConfiguration(operations=sino_ops)
+            gpu_op_enabled = any(op.short_name in GPU_BOUND_OPERATIONS for op in sino_ops)
+            use_gpu_pass = gpu_op_enabled and _check_cuda_available()
 
-            def submit_sino_chunk(pool, start, end):
-                return pool.submit(_process_sinogram_chunk, dst, sino_config, start, end)
+            if gpu_op_enabled and not use_gpu_pass:
+                logger.warning(
+                    "ring_filter_inr is enabled but CUDA is not available; running it on "
+                    "CPU in the normal process pool. Expect this to be much slower than GPU."
+                )
 
-            cancelled = _run_chunked_processes(
-                job_id, job_manager, num_slices, submit_sino_chunk,
-                total_steps=total_steps, completed_ref=completed_ref,
-                label="Sinogram pass", operation_name="sinogram_pass",
-                check_cancellation=True,
-            )
+            if use_gpu_pass:
+                cancelled = _run_gpu_sinogram_pass(
+                    job_id, job_manager, dst, sino_ops, num_slices,
+                    total_steps=total_steps, completed_ref=completed_ref,
+                )
+            else:
+                sino_config = PreprocessingConfiguration(operations=sino_ops)
+
+                def submit_sino_chunk(pool, start, end):
+                    return pool.submit(_process_sinogram_chunk, dst, sino_config, start, end)
+
+                cancelled = _run_chunked_processes(
+                    job_id, job_manager, num_slices, submit_sino_chunk,
+                    total_steps=total_steps, completed_ref=completed_ref,
+                    label="Sinogram pass", operation_name="sinogram_pass",
+                    check_cancellation=True,
+                )
             if cancelled:
                 return ""
             workspace.flush()

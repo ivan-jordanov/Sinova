@@ -32,6 +32,8 @@ OPERATION_SCOPES: dict[str, str] = {
     "ring_filter_inr": "sinogram",
 }
 
+GPU_BOUND_OPERATIONS = {"ring_filter_inr"}
+
 class Settings:
     """Application settings."""
 
