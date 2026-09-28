@@ -2,7 +2,7 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
-from app.core.config import OPERATION_DEPENDENCIES, OPERATION_SCOPES
+from app.core.constants import OPERATION_DEPENDENCIES, OPERATION_SCOPES
 
 DataContext = Literal["projection", "sinogram"]
 

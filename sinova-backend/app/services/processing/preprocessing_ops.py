@@ -2,9 +2,6 @@ import numpy as np
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 from scipy import ndimage
-from app.services.processing.neural_destriping import INRDestripeConfig, train_inr_destriping
-import multiprocessing
-import torch
 
 import tomopy
 
@@ -13,63 +10,95 @@ def normalize(
     flat: np.ndarray | float | None = None,
     dark: np.ndarray | float | None = None,
     is_sinogram: bool = False,
+    slice_idx: int | None = None,
 ) -> np.ndarray:
-    """Normalize projection or sinogram data strictly using TomoPy."""
+    """Normalize projection or sinogram data safely for both preview and pipeline contexts."""
     data = data.astype(np.float32)
 
     flat_val = 1.0 if flat is None else flat
     dark_val = 0.0 if dark is None else dark
 
-    # Average 3D flat/dark stacks (N_frames, Y, Z) down to 2D (Y, Z)
+    # Collapse 3D flat/dark stacks (N_frames, Height, Width) down to 2D (Height, Width)
     if isinstance(flat_val, np.ndarray) and flat_val.ndim == 3:
         flat_val = np.mean(flat_val, axis=0)
     if isinstance(dark_val, np.ndarray) and dark_val.ndim == 3:
         dark_val = np.mean(dark_val, axis=0)
 
-    # If input is a sinogram (Angles, Width), collapse 2D flat/dark (Height, Width) to 1D profile (Width,)
-    if is_sinogram or (
-        data.ndim == 2
-        and isinstance(flat_val, np.ndarray)
-        and flat_val.ndim == 2
-        and data.shape[0] != flat_val.shape[0]
-    ):
+    # For sinogram context, extract the 1D detector row matching this slice index
+    if is_sinogram:
+        target_width = data.shape[1] if data.ndim == 2 else data.shape[-1]
+
         if isinstance(flat_val, np.ndarray) and flat_val.ndim == 2:
-            flat_val = np.mean(flat_val, axis=0)
+            if slice_idx is not None and 0 <= slice_idx < flat_val.shape[0]:
+                flat_val = flat_val[slice_idx, :]
+            elif flat_val.shape[1] == target_width:
+                flat_val = flat_val[flat_val.shape[0] // 2, :]
+            elif flat_val.shape[0] == target_width:
+                flat_val = flat_val[:, flat_val.shape[1] // 2]
+
         if isinstance(dark_val, np.ndarray) and dark_val.ndim == 2:
-            dark_val = np.mean(dark_val, axis=0)
+            if slice_idx is not None and 0 <= slice_idx < dark_val.shape[0]:
+                dark_val = dark_val[slice_idx, :]
+            elif dark_val.shape[1] == target_width:
+                dark_val = dark_val[dark_val.shape[0] // 2, :]
+            elif dark_val.shape[0] == target_width:
+                dark_val = dark_val[:, dark_val.shape[1] // 2]
 
+    # Handle 2D single frame/slice (Preview or Chunk Item)
     if data.ndim == 2:
-        data_3d = data[np.newaxis, :, :]
+        if is_sinogram:
+            # Sinogram shape: (Angles, Width) -> TomoPy 3D shape: (Angles, 1, Width)
+            data_3d = data[:, np.newaxis, :]
 
-        if isinstance(flat_val, np.ndarray):
-            if flat_val.ndim == 1:
-                flat_3d = flat_val[np.newaxis, np.newaxis, :]
-            elif flat_val.ndim == 2:
-                flat_3d = flat_val[np.newaxis, :, :]
-            else:
-                flat_3d = flat_val
+            def _to_sino_3d(ref, target_3d):
+                if isinstance(ref, np.ndarray):
+                    if ref.ndim == 1:
+                        return ref[np.newaxis, np.newaxis, :]
+                    if ref.ndim == 2:
+                        return ref[:, np.newaxis, :]
+                    return ref
+                return np.full_like(target_3d, ref)
+
+            flat_3d = _to_sino_3d(flat_val, data_3d)
+            dark_3d = _to_sino_3d(dark_val, data_3d)
+
+            res = tomopy.normalize(data_3d, flat_3d, dark_3d)
+            return res[:, 0, :].astype(np.float32)
+
         else:
-            flat_3d = np.full_like(data_3d, flat_val)
+            # Projection shape: (Height, Width) -> TomoPy 3D shape: (1, Height, Width)
+            data_3d = data[np.newaxis, :, :]
 
-        if isinstance(dark_val, np.ndarray):
-            if dark_val.ndim == 1:
-                dark_3d = dark_val[np.newaxis, np.newaxis, :]
-            elif dark_val.ndim == 2:
-                dark_3d = dark_val[np.newaxis, :, :]
-            else:
-                dark_3d = dark_val
-        else:
-            dark_3d = np.full_like(data_3d, dark_val)
+            def _to_proj_3d(ref, target_3d):
+                if isinstance(ref, np.ndarray):
+                    if ref.ndim == 2:
+                        return ref[np.newaxis, :, :]
+                    if ref.ndim == 1:
+                        return ref[np.newaxis, np.newaxis, :]
+                    return ref
+                return np.full_like(target_3d, ref)
 
-        res = tomopy.normalize(data_3d, flat_3d, dark_3d)
-        return res[0].astype(np.float32)
+            flat_3d = _to_proj_3d(flat_val, data_3d)
+            dark_3d = _to_proj_3d(dark_val, data_3d)
+
+            res = tomopy.normalize(data_3d, flat_3d, dark_3d)
+            return res[0].astype(np.float32)
+
+    # Fallback for full 3D volumes (Angles, Height, Width)
+    if isinstance(flat_val, np.ndarray) and flat_val.ndim == 2:
+        flat_val = flat_val[np.newaxis, :, :]
+    if isinstance(dark_val, np.ndarray) and dark_val.ndim == 2:
+        dark_val = dark_val[np.newaxis, :, :]
 
     flat_arr = flat_val if isinstance(flat_val, np.ndarray) else np.full_like(data, flat_val)
     dark_arr = dark_val if isinstance(dark_val, np.ndarray) else np.full_like(data, dark_val)
+
     return tomopy.normalize(data, flat_arr, dark_arr).astype(np.float32)
+
 
 def negative_log(data: np.ndarray, epsilon: float = 1e-8) -> np.ndarray:
     """Apply safe negative logarithm transformation."""
+    # Clip upper bound to 1.0 to map noisy >100% transmission to exactly 0.0 attenuation
     clamped = np.clip(data, epsilon, 1.0)
     return -np.log(clamped).astype(np.float32)
 
@@ -215,7 +244,8 @@ def ring_filter_fw(
         return data.astype(np.float32)
 
     is_2d = data.ndim == 2
-    stacked = data[np.newaxis, :, :] if is_2d else data
+    # Place slice dimension at axis 1: (angles, slices, detector_x)
+    stacked = data[:, np.newaxis, :] if is_2d else data
 
     res = tomopy.prep.stripe.remove_stripe_fw(
         stacked,
@@ -224,7 +254,7 @@ def ring_filter_fw(
         sigma=sigma,
     ).astype(np.float32)
 
-    return res[0] if is_2d else res
+    return res[:, 0, :] if is_2d else res
 
 
 def ring_filter_vo(
@@ -236,14 +266,15 @@ def ring_filter_vo(
         return data.astype(np.float32)
 
     is_2d = data.ndim == 2
-    stacked = data[np.newaxis, :, :] if is_2d else data
+    # Place slice dimension at axis 1: (angles, slices, detector_x)
+    stacked = data[:, np.newaxis, :] if is_2d else data
 
     res = tomopy.prep.stripe.remove_stripe_based_sorting(
         stacked,
         size=size,
     ).astype(np.float32)
 
-    return res[0] if is_2d else res
+    return res[:, 0, :] if is_2d else res
 
 def ring_filter_inr(
     data: np.ndarray,
@@ -255,6 +286,10 @@ def ring_filter_inr(
 ) -> np.ndarray:
     """Zero-shot INR ring/stripe removal (Shi et al. 2024) on one 2D (angles, detectors) sinogram.
     Trains a fresh network per call -- there is no model state to reuse across slices."""
+    
+    from app.services.processing.neural_destriping import INRDestripeConfig, train_inr_destriping
+    import multiprocessing
+    import torch
     
     if not torch.cuda.is_available() and multiprocessing.parent_process() is not None:
         torch.set_num_threads(1)

@@ -43,6 +43,7 @@ class DatasetService:
         self.flat_metadata: DatasetMetadata | None = None
         self.dark_reader: DatasetReader | None = None
         self.dark_metadata: DatasetMetadata | None = None
+        
 
     def load_dataset(self, file_path: str) -> DatasetMetadata:
         """

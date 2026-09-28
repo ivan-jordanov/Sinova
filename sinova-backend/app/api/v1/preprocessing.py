@@ -1,6 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
-from app.core.config import OPERATION_SCOPES
+from app.core.config import AVAILABLE_OPERATIONS
 from app.schemas.preprocessing import (
     ApplyPreprocessingRequest,
     JobStatus,
@@ -12,98 +12,6 @@ from app.services.processing.processing_parallel import run_preprocessing_job
 
 router = APIRouter(prefix="/preprocessing", tags=["preprocessing"])
 
-AVAILABLE_OPERATIONS = [
-    OperationInfo(
-        id="normalization",
-        name="Normalization",
-        short_name="normalize",
-        category="intensity",
-        description="Normalize intensity values using flat/dark references",
-        requires=[],
-        scope=OPERATION_SCOPES["normalize"],
-    ),
-    OperationInfo(
-        id="attenuation",
-        name="Attenuation Clipping",
-        short_name="clip_attenuation",
-        category="intensity",
-        description="Clip attenuation values to a specified threshold",
-        requires=[],
-        scope=OPERATION_SCOPES["clip_attenuation"],
-    ),
-    OperationInfo(
-        id="fov-mask",
-        name="FOV / Beam Mask",
-        short_name="fov_mask",
-        category="spatial",
-        description="Define circular spatial mask across detector coordinates",
-        requires=[],
-        scope=OPERATION_SCOPES["fov_mask"],
-    ),
-    OperationInfo(
-        id="crop-pad-beam",
-        name="Crop & Pad Beam",
-        short_name="crop_pad_beam",
-        category="spatial",
-        description="Crop and pad detector beam boundary regions",
-        requires=[],
-        scope=OPERATION_SCOPES["crop_pad_beam"],
-    ),
-    OperationInfo(
-        id="denoise",
-        name="Denoise Filter",
-        short_name="denoise",
-        category="spatial",
-        description="Apply median or Gaussian spatial filtering",
-        requires=[],
-        scope=OPERATION_SCOPES["denoise"],
-    ),
-    OperationInfo(
-        id="mutate",
-        name="Mutate Projections",
-        short_name="mutate",
-        category="geometry",
-        description="Reduces the projection count manually or automatically if the scan consists of more than one full rotation",
-        requires=[],
-        scope=OPERATION_SCOPES["mutate"],
-    ),
-    OperationInfo(
-        id="cor_shift",
-        name="Center of Rotation",
-        short_name="cor_shift",
-        category="geometry",
-        description="Set the detector center used by geometry-aware operations",
-        requires=[],
-        scope=OPERATION_SCOPES["cor_shift"],
-    ),
-    OperationInfo(
-        id="fourier-wavelet",
-        name="Fourier-Wavelet",
-        short_name="ring_filter_fw",
-        category="destriping",
-        description="Remove ring artifacts using frequency and wavelet decomposition",
-        requires=[],
-        scope=OPERATION_SCOPES["ring_filter_fw"],
-    ),
-    OperationInfo(
-        id="vo-sorting",
-        name="Vo's Sorting",
-        short_name="ring_filter_vo",
-        category="destriping",
-        description="Remove ring artifacts using Nghia Vo's sorting method",
-        requires=[],
-        scope=OPERATION_SCOPES["ring_filter_vo"],
-    ),
-    OperationInfo(
-        id="ring-filter-inr",
-        name="Neural Destriping",
-        short_name="ring_filter_inr",
-        category="destriping",
-        description="Remove ring artifacts using deep neural model processing",
-        requires=[],
-        scope=OPERATION_SCOPES["ring_filter_inr"],
-    ),
-]
 
 
 def _job_to_response(job: ProcessingJob) -> JobStatus:

@@ -1,5 +1,5 @@
 """
-Preprocessing pipeline — CPU-bound frame/slice work runs in a PERSISTENT
+Preprocessing pipeline -- CPU-bound frame/slice work runs in a PERSISTENT
 ProcessPoolExecutor (created once, on first use, and reused for every
 subsequent job) instead of a per-job pool.
 
@@ -9,11 +9,11 @@ NumPy/SciPy/TomoPy. Paying that ~2-4s / 1.5-3GB cost on every job is
 what a per-job "with ProcessPoolExecutor() as pool:" does. Creating the
 pool once and reusing its already-warm workers for the app's lifetime
 pays that cost exactly once. Only the FIRST job after the app starts (or
-the app's own startup hook, if you pre-warm it — see the bottom of this
+the app's own startup hook, if you pre-warm it -- see the bottom of this
 file) eats the spawn latency.
 
 Why the worker functions look the way they do (pickling): a persistent
-pool means workers are long-lived, separate interpreters — they never
+pool means workers are long-lived, separate interpreters -- they never
 share memory with the parent, and (especially on spawn) can only receive
 what can be pickled. We never send `job_manager`, `dataset_service`, or
 `workspace` into a worker: those are exactly the kind of stateful,
@@ -22,12 +22,14 @@ either fail to pickle or silently misbehave if half-reconstructed in a
 child. Instead, workers receive only:
   - a small, explicitly-picklable `_MemmapDescriptor` (file path + shape
     + dtype) that lets a worker open its OWN np.memmap onto the same
-    underlying file — writes to non-overlapping index ranges from
+    underlying file -- writes to non-overlapping index ranges from
     different processes are visible across processes because memmap
     uses a shared (MAP_SHARED) OS page cache for the file, not because
     anything is being copied between processes;
   - the chunk's index range;
-  - the (assumed-simple/picklable) operations config.
+  - the (assumed-simple/picklable) operations config. Flat/dark
+    references are attached to the normalize operation as 2-D arrays
+    (see prepare_normalization_params) -- never as full frame stacks.
 job_manager stays in the parent; only the parent updates progress or
 checks cancellation, using each chunk's returned item-count.
 """
@@ -35,6 +37,8 @@ checks cancellation, using each chunk's returned item-count.
 import asyncio
 import atexit
 import concurrent.futures
+import copy
+import logging
 import multiprocessing
 import os
 import threading
@@ -43,13 +47,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.core.config import GPU_BOUND_OPERATIONS
+from app.core.constants import BROAD_SCOPE_OPERATIONS, GPU_BOUND_OPERATIONS
 from app.schemas.preprocessing import Operation, PreprocessingConfiguration
 from app.services.business.dataset_access import DatasetService, get_dataset_service
 from app.services.business.export_service import ExportService
 from app.services.business.job_manager import JobManager, get_job_manager
 from app.services.business.operation_executor import apply_operations_to_data
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +60,7 @@ CHUNK_SIZE = 16
 
 
 # ---------------------------------------------------------------------------
-# Persistent process pool — created once, reused for every job
+# Persistent process pool -- created once, reused for every job
 # ---------------------------------------------------------------------------
 
 _pool_lock = threading.Lock()
@@ -67,7 +70,7 @@ _pool_max_workers: int | None = None
 
 def _worker_init() -> None:
     """
-    Runs once per worker process, at pool creation time — NOT per job.
+    Runs once per worker process, at pool creation time -- NOT per job.
     Add anything with heavy import-time cost here (your ops modules
     included) so that cost is front-loaded into pool startup instead of
     the first task that happens to need it.
@@ -103,7 +106,7 @@ def shutdown_process_pool() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Picklable descriptors — the only "handle" to a volume that crosses the
+# Picklable descriptors -- the only "handle" to a volume that crosses the
 # process boundary. Never pass workspace / dataset_service themselves.
 # ---------------------------------------------------------------------------
 
@@ -133,7 +136,7 @@ def _source_descriptor(dataset_service) -> _MemmapDescriptor | None:
     Best-effort: if the *loaded dataset* is itself memmap-backed and
     exposes the backing file, workers can read source projections with
     zero IPC, same as they do for the workspace volume. Returns None if
-    that's not available — callers then fall back to having the parent
+    that's not available -- callers then fall back to having the parent
     read frames via dataset_service.get_projection(i) and ship the
     arrays into the worker instead (still correct, just some extra
     serialization on the input side).
@@ -146,9 +149,49 @@ def _source_descriptor(dataset_service) -> _MemmapDescriptor | None:
     return None
 
 
+def _as_reference(arr) -> np.ndarray:
+    """
+    Collapse a flat/dark stack to the 2-D float32 mean that normalize()
+    computes anyway, so every chunk sent to a worker carries one frame
+    instead of the whole stack (a flat video can be gigabytes, and each
+    in-flight chunk gets its own pickled copy). The mean is accumulated
+    in float64 while streaming, without building a float copy of the stack.
+    """
+    arr = np.asanyarray(arr)
+    if arr.ndim == 3:
+        return np.mean(arr, axis=0, dtype=np.float64).astype(np.float32)
+    return np.asarray(arr, dtype=np.float32)
+
+
+def prepare_normalization_params(
+    operations: list[Operation], dataset_service: DatasetService
+) -> None:
+    """Pre-loads flat/dark NumPy arrays into operation parameters once in the parent process."""
+    for op in operations:
+        if op.enabled and op.short_name == "normalize":
+            flat_param = op.parameters.get("flat")
+            dark_param = op.parameters.get("dark")
+
+            flat_path = str(flat_param) if flat_param and str(flat_param).lower() != "auto" else None
+            dark_path = str(dark_param) if dark_param and str(dark_param).lower() != "auto" else None
+
+            if flat_path or dark_path:
+                dataset_service.load_normalization(flat_path=flat_path, dark_path=dark_path)
+
+            if dataset_service.flat_reader is not None:
+                op.parameters["_flat_array"] = _as_reference(dataset_service.flat_reader.get_data())
+            elif getattr(dataset_service, "reader", None) and hasattr(dataset_service.reader, "get_flat"):
+                op.parameters["_flat_array"] = _as_reference(dataset_service.reader.get_flat())
+
+            if dataset_service.dark_reader is not None:
+                op.parameters["_dark_array"] = _as_reference(dataset_service.dark_reader.get_data())
+            elif getattr(dataset_service, "reader", None) and hasattr(dataset_service.reader, "get_dark"):
+                op.parameters["_dark_array"] = _as_reference(dataset_service.reader.get_dark())
+
+
 # ---------------------------------------------------------------------------
 # Worker-side functions. Top-level (not closures/methods) and pickled by
-# reference under spawn — only their arguments are pickled by value, so
+# reference under spawn -- only their arguments are pickled by value, so
 # every argument here must be cheap, simple, and side-effect-free to pickle.
 # ---------------------------------------------------------------------------
 
@@ -157,7 +200,7 @@ def _process_projection_chunk_from_memmap(
 ) -> int:
     src_vol, dst_vol = src.open(), dst.open()
     for i in range(start, end):
-        processed, _ = apply_operations_to_data(src_vol[i], proj_config)
+        processed, _ = apply_operations_to_data(src_vol[i], proj_config, context="projection")
         dst_vol[i] = processed
     dst_vol.flush()
     return end - start
@@ -170,31 +213,42 @@ def _process_projection_chunk_from_frames(
     the parent already read the raw frames and shipped them in."""
     dst_vol = dst.open()
     for offset, frame in enumerate(frames):
-        processed, _ = apply_operations_to_data(frame, proj_config)
+        processed, _ = apply_operations_to_data(frame, proj_config, context="projection")
         dst_vol[start + offset] = processed
     dst_vol.flush()
     return len(frames)
 
 
-def _process_sinogram_chunk(dst: _MemmapDescriptor, sino_config, start: int, end: int) -> int:
+def _write_sinogram(dst_vol, y: int, processed: np.ndarray, out_angles: int) -> None:
+    expected = (out_angles, dst_vol.shape[2])
+    if processed.shape != expected:
+        raise ValueError(
+            f"Sinogram {y}: operations produced {processed.shape}, expected {expected}. "
+            "The angle count is resolved once before the pass, so every slice must match it."
+        )
+    dst_vol[:out_angles, y, :] = processed
+
+
+def _process_sinogram_chunk(dst: _MemmapDescriptor, sino_config, start: int, end: int, out_angles: int) -> int:
     dst_vol = dst.open()
     for y in range(start, end):
         sinogram = dst_vol[:, y, :]  # assumes (projection, height, width); adjust axis if different
-        processed, _ = apply_operations_to_data(sinogram, sino_config)
-        dst_vol[:, y, :] = processed
+        processed, _ = apply_operations_to_data(sinogram, sino_config, context="sinogram", slice=y)
+        _write_sinogram(dst_vol, y, processed, out_angles)
     dst_vol.flush()
     return end - start
 
 
 def _copy_projection_chunk(src: _MemmapDescriptor, dst: _MemmapDescriptor, start: int, end: int) -> int:
     """No-ops pass-through copy. Only used when the source is confirmed
-    memmap-backed (see execute_preprocessing_pipeline) — pure I/O, no CPU
+    memmap-backed (see execute_preprocessing_pipeline) -- pure I/O, no CPU
     work, so it's only worth the process-pool round trip when it lets us
     skip shipping frame data through IPC entirely."""
     src_vol, dst_vol = src.open(), dst.open()
     dst_vol[start:end] = src_vol[start:end]
     dst_vol.flush()
     return end - start
+
 
 def _check_cuda_available() -> bool:
     try:
@@ -210,6 +264,7 @@ def _run_gpu_sinogram_pass(
     dst: _MemmapDescriptor,
     sino_ops: list[Operation],
     num_slices: int,
+    out_angles: int,
     *,
     total_steps: int,
     completed_ref: list,
@@ -243,8 +298,8 @@ def _run_gpu_sinogram_pass(
             return True
 
         sinogram = dst_vol[:, y, :]
-        processed, _ = apply_operations_to_data(sinogram, sino_config)
-        dst_vol[:, y, :] = processed
+        processed, _ = apply_operations_to_data(sinogram, sino_config, context="sinogram", slice=y)
+        _write_sinogram(dst_vol, y, processed, out_angles)
 
         completed_ref[0] += 1
         progress = int((completed_ref[0] / total_steps) * 80)
@@ -292,11 +347,11 @@ def _run_chunked_processes(
     parent still stops handing out *new* chunks the moment it notices
     the job was cancelled.
 
-    Progress is reported once per completed chunk (not every 10 items —
+    Progress is reported once per completed chunk (not every 10 items --
     a chunk is already close to that granularity and it's the natural
     unit of feedback we get back from a process).
 
-    Does NOT shut down the persistent pool on error — that pool is
+    Does NOT shut down the persistent pool on error -- that pool is
     shared across all jobs for the app's lifetime. On a worker
     exception, not-yet-started chunks are best-effort cancelled and the
     exception is re-raised.
@@ -373,11 +428,14 @@ async def run_preprocessing_job(job_id: str) -> None:
 
         loop = asyncio.get_running_loop()
         with concurrent.futures.ThreadPoolExecutor() as pool:
-            await loop.run_in_executor(
+            export_path = await loop.run_in_executor(
                 pool,
                 execute_preprocessing_pipeline,
                 job_id, job_manager, dataset_service, proj_ops, sino_ops,
             )
+
+        if not export_path:  # the pipeline returns "" when the job was cancelled
+            return
 
         job_manager.complete_job(job_id, "Full stack preprocessed successfully")
 
@@ -394,30 +452,43 @@ def execute_preprocessing_pipeline(
 ) -> str:
     """
     Synchronous CPU worker running in the background thread pool.
-    Scales preprocessing from 0% to 80% progress, and export streaming
-    from 80% to 100%. Frame/slice CPU work is dispatched in chunks of
-    CHUNK_SIZE to the persistent process pool (see module docstring).
+    Assumes broad-scope operations (like mutate) were already executed on a
+    preview slice and updated dataset_service metadata prior to this job.
     """
     metadata = dataset_service.get_metadata()
     num_projections = metadata["projection_count"]
-    
-    # --- DRY RUN FOR DYNAMIC SHAPES ---
-    # Determine the post-projection dimensions to prevent NumPy broadcast errors
-    # when operations like 'crop_pad_beam' alter the frame shape.
+
+    # Broad-scope operations (mutate, COR estimation) are resolved before the
+    # job and must never run per frame/slice inside workers.
+    job_proj_ops = [op for op in proj_ops if op.short_name not in BROAD_SCOPE_OPERATIONS]
+    job_sino_ops = [op for op in sino_ops if op.short_name not in BROAD_SCOPE_OPERATIONS]
+
+    # Work on private copies so the flat/dark arrays attached below never end
+    # up in the shared job configuration.
+    proj_ops = [copy.deepcopy(op) for op in job_proj_ops]
+    sino_ops = [copy.deepcopy(op) for op in job_sino_ops]
+
+    # Pre-resolve normalization arrays in the parent process before starting workers
+    prepare_normalization_params(proj_ops, dataset_service)
+    prepare_normalization_params(sino_ops, dataset_service)
+
+    # Dry run for dynamic shapes to determine post-projection dimensions
     test_frame = dataset_service.get_projection(0)
     if proj_ops:
         proj_config = PreprocessingConfiguration(operations=proj_ops)
-        test_frame, _ = apply_operations_to_data(test_frame, proj_config)
-        
+        test_frame, _ = apply_operations_to_data(test_frame, proj_config, context="projection")
+        # Parameters updated by the dry run (e.g. crop_pad_beam's rot_center)
+        # stay visible on the job's own operations, as before.
+        for job_op, op in zip(job_proj_ops, proj_ops):
+            job_op.parameters.update({k: v for k, v in op.parameters.items() if not k.startswith("_")})
+
     out_height, out_width = test_frame.shape
     num_slices = out_height  # Sinogram pass must iterate over the NEW height
 
     total_steps = (num_projections if proj_ops else 0) + (num_slices if sino_ops else 0)
 
-    # Note: Ensure your dataset_service.create_workspace method accepts 
-    # these dynamic shape overrides instead of relying on the original metadata.
     workspace = dataset_service.create_workspace(
-        job_id, 
+        job_id,
         shape=(num_projections, out_height, out_width)
     )
     dst = _volume_descriptor(workspace)
@@ -426,8 +497,6 @@ def execute_preprocessing_pipeline(
     try:
         # Projection Operations Pass (Scaled to 0%-80% range)
         if proj_ops:
-            # proj_config is already instantiated above in the dry run, but we 
-            # instantiate again or just use the existing one to be safe.
             src = _source_descriptor(dataset_service)
 
             if src is not None:
@@ -460,25 +529,25 @@ def execute_preprocessing_pipeline(
 
         # Sinogram Operations Pass (Scaled to 0%-80% range)
         if sino_ops:
+            sino_config = PreprocessingConfiguration(operations=sino_ops)
+
             gpu_op_enabled = any(op.short_name in GPU_BOUND_OPERATIONS for op in sino_ops)
             use_gpu_pass = gpu_op_enabled and _check_cuda_available()
 
             if gpu_op_enabled and not use_gpu_pass:
                 logger.warning(
-                    "ring_filter_inr is enabled but CUDA is not available; running it on "
-                    "CPU in the normal process pool. Expect this to be much slower than GPU."
+                    "GPU op is enabled but CUDA is not available; running on "
+                    "CPU in the normal process pool."
                 )
 
             if use_gpu_pass:
                 cancelled = _run_gpu_sinogram_pass(
-                    job_id, job_manager, dst, sino_ops, num_slices,
+                    job_id, job_manager, dst, sino_ops, num_slices, num_projections,
                     total_steps=total_steps, completed_ref=completed_ref,
                 )
             else:
-                sino_config = PreprocessingConfiguration(operations=sino_ops)
-
                 def submit_sino_chunk(pool, start, end):
-                    return pool.submit(_process_sinogram_chunk, dst, sino_config, start, end)
+                    return pool.submit(_process_sinogram_chunk, dst, sino_config, start, end, num_projections)
 
                 cancelled = _run_chunked_processes(
                     job_id, job_manager, num_slices, submit_sino_chunk,

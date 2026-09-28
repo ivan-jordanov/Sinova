@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 sinova-backend/data/exports/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class

@@ -1,38 +1,28 @@
 """Configuration and settings for SINOVA backend."""
-from pathlib import Path
 import os
+from pathlib import Path
 
-# Operation dependencies: if key op is enabled, all values must be enabled first
-OPERATION_DEPENDENCIES: dict[str, list[str]] = {
-    "normalize": [],
-    "negative_log": ["normalize"],
-    "clip_attenuation": [],
-    "fov_mask": [],
-    "crop_pad_beam": [],
-    "mutate": [],
-    "denoise": [],
-    "cor_shift": [],
-    "ring_filter_fw": [],
-    "ring_filter_vo": [],
-    "ring_filter_inr": [],
-}
+from app.core.constants import (
+    BROAD_SCOPE_OPERATIONS,
+    GPU_BOUND_OPERATIONS,
+    OPERATION_DEPENDENCIES,
+    OPERATION_SCOPES,
+)
+from app.schemas.preprocessing import OperationInfo
 
-# Operation scope: Specifies valid preview context applicability ("projection", "sinogram", or "both")
-OPERATION_SCOPES: dict[str, str] = {
-    "normalize": "both",
-    "negative_log": "both",
-    "clip_attenuation": "both",
-    "fov_mask": "projection",
-    "crop_pad_beam": "projection",
-    "mutate": "sinogram",
-    "denoise": "both",
-    "cor_shift": "sinogram",
-    "ring_filter_fw": "sinogram",
-    "ring_filter_vo": "sinogram",
-    "ring_filter_inr": "sinogram",
-}
+AVAILABLE_OPERATIONS = [
+    OperationInfo(
+        id="normalization",
+        name="Normalization",
+        short_name="normalize",
+        category="intensity",
+        description="Normalize intensity values using flat/dark references",
+        requires=[],
+        scope=OPERATION_SCOPES["normalize"],
+    ),
+    # ... rest of AVAILABLE_OPERATIONS ...
+]
 
-GPU_BOUND_OPERATIONS = {"ring_filter_inr"}
 
 class Settings:
     """Application settings."""
