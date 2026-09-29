@@ -5,7 +5,6 @@ import pydicom
 from pydicom.errors import InvalidDicomError
 
 from app.services.infrastructure.workspace import ProcessingWorkspace
-
 from app.services.infrastructure.dataset_reader import DatasetMetadata
 
 
@@ -20,22 +19,18 @@ class DICOMReader:
         self._pydicom = pydicom
         self.files = self._find_files()
 
-        # Read header of the first file to inspect metadata
         first_dcm = self._pydicom.dcmread(str(self.files[0]))
-        first_frame = first_dcm.pixel_array
+        first_frame = self._extract_pixel_data(first_dcm)
 
-        # Single multi-frame DICOM file
         if len(self.files) == 1 and first_frame.ndim == 3:
             self._volume = first_frame
             self.projection_count, self.height, self.width = self._volume.shape
             self.dtype = self._volume.dtype
-        # Series of single-frame DICOM files
         else:
             self.projection_count = len(self.files)
             self.height, self.width = first_frame.shape[-2], first_frame.shape[-1]
             self.dtype = first_frame.dtype
 
-            # Create temporary file-backed memmap buffer
             cache_dir = self.path if self.path.is_dir() else self.path.parent
             cache_file = cache_dir / "_dicom_memmap.dat"
 
@@ -48,15 +43,24 @@ class DICOMReader:
 
             for i, filepath in enumerate(self.files):
                 dcm = self._pydicom.dcmread(str(filepath))
-                self._volume[i, :, :] = dcm.pixel_array
+                self._volume[i, :, :] = self._extract_pixel_data(dcm)
 
             self._volume.flush()
 
         self.dtype_str = str(self.dtype)
         self.bytes_per_element = np.dtype(self.dtype).itemsize
 
+    def _extract_pixel_data(self, dcm) -> np.ndarray:
+        if "FloatPixelData" in dcm:
+            frames = int(getattr(dcm, "NumberOfFrames", 1))
+            arr = np.frombuffer(dcm.FloatPixelData, dtype=np.float32)
+            if frames > 1:
+                return arr.reshape((frames, dcm.Rows, dcm.Columns))
+            return arr.reshape((dcm.Rows, dcm.Columns))
+        
+        return dcm.pixel_array
+
     def close(self) -> None:
-        """Release memmap file resources and remove temporary disk cache."""
         if getattr(self, "_volume", None) is not None:
             if hasattr(self._volume, "flush"):
                 self._volume.flush()
@@ -113,7 +117,6 @@ class DICOMReader:
         if not valid_files:
             raise FileNotFoundError(f"No valid DICOM files found in {search_dir}")
 
-        # Sort files by actual DICOM InstanceNumber to guarantee correct slice ordering
         valid_files.sort(key=self._instance_number)
         return valid_files
 
@@ -136,6 +139,6 @@ class DICOMReader:
             raise ValueError(
                 f"Slice index {slice_index} out of bounds (0 to {self.height - 1})"
             )
+
     def get_data(self) -> np.ndarray:
-        """Return the full dataset array as a NumPy array."""
         return np.asarray(self._volume)

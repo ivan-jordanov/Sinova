@@ -28,13 +28,22 @@ class MRAWReader:
                 f"No corresponding .cih or .cihx header file found for: {file_path}"
             )
 
-        try:
-            images, _ = pyMRAW.load_video(str(header_path))
-        except ValueError as err:
-            if "Unknown format code" in str(err):
-                images = self._load_memmap_fallback(header_path)
-            else:
-                raise
+        images = None
+        if header_path.suffix.lower() == ".cih":
+            fields = self._read_header_fields(header_path)
+            if fields.get("bit depth") == "32":
+                # Written by ExportService: raw float32, which pyMRAW cannot read
+                # and the uint16 fallback below would silently misinterpret.
+                images = self._load_float32_export(fields)
+
+        if images is None:
+            try:
+                images, _ = pyMRAW.load_video(str(header_path))
+            except ValueError as err:
+                if "Unknown format code" in str(err):
+                    images = self._load_memmap_fallback(header_path)
+                else:
+                    raise
 
         self._volume = images
         self.projection_count = images.shape[0]
@@ -44,6 +53,27 @@ class MRAWReader:
         self.dtype = images.dtype
         self.dtype_str = str(self.dtype)
         self.bytes_per_element = np.dtype(self.dtype).itemsize
+        
+    @staticmethod
+    def _read_header_fields(header_path: Path) -> dict[str, str]:
+        """Parse 'Key : value' lines of a .cih header (keys lower-cased, whitespace stripped)."""
+        fields: dict[str, str] = {}
+        with open(header_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if " : " in line:
+                    key, val = line.split(" : ", 1)
+                    fields[key.strip().lower()] = val.strip()
+        return fields
+
+    def _load_float32_export(self, fields: dict[str, str]) -> np.memmap:
+        """Open a raw float32 volume written by ExportService.export_mraw_stream."""
+        width = int(fields["image width"])
+        height = int(fields["image height"])
+        projection_count = self.path.stat().st_size // (width * height * 4)
+        return np.memmap(
+            self.path, dtype=np.float32, mode="r",
+            shape=(projection_count, height, width),
+        )
 
     def _load_memmap_fallback(self, header_path: Path) -> np.memmap:
         """Fallback when pyMRAW crashes on string fields in CIH headers."""

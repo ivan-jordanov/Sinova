@@ -102,19 +102,21 @@ class ExportService:
 
 
     def _write_cih_header(self, path: Path, num_frames: int, height: int, width: int) -> None:
-        header_content = textwrap.dedent(f"""[Main]
-        File Format : MRW
-        Image Width : {width}
-        Image Height : {height}
-        Total Frame : {num_frames}
-        Record Rate(fps) : 1000
-        Shutter Speed(s) : 1/1000
-        Color Format : Mono
-        Bit Depth : 32
-        EffectiveBit Depth : 32
-        Comment : Exported Preprocessed Volume
-        """)
-        path.write_text(header_content, encoding="utf-8")
+        lines = [
+            "[Main]",
+            "File Format : MRW",
+            f"Image Width : {width}",
+            f"Image Height : {height}",
+            f"Total Frame : {num_frames}",
+            "Record Rate(fps) : 1000",
+            "Shutter Speed(s) : 1/1000",
+            "Color Format : Mono",
+            "Bit Depth : 32",
+            "EffectiveBit Depth : 32",
+            "Comment : Exported Preprocessed Volume",
+            "",
+        ]
+        path.write_text("\n".join(lines), encoding="utf-8")
 
     def export_dat_stream(
         self,
@@ -177,7 +179,9 @@ class ExportService:
 
             file_meta = FileMetaDataset()
             file_meta.MediaStorageHostName = "CT_PREPROCESS"
-            file_meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
+            
+            # Parametric Map Storage SOP Class supports floating point data
+            file_meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.30"
             file_meta.MediaStorageSOPInstanceUID = generate_uid()
             file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
 
@@ -193,16 +197,12 @@ class ExportService:
 
             ds.Rows = height
             ds.Columns = width
-            ds.BitsAllocated = 32
-            ds.BitsStored = 32
-            ds.HighBit = 31
-            ds.PixelRepresentation = 1
             ds.SamplesPerPixel = 1
             ds.PhotometricInterpretation = "MONOCHROME2"
             ds.InstanceNumber = i + 1
 
             frame = np.asarray(workspace_volume[i, :, :], dtype=np.float32)
-            ds.PixelData = frame.tobytes()
+            ds.FloatPixelData = frame.tobytes()
             ds.save_as(str(dcm_path))
 
             self._report_progress(
