@@ -7,24 +7,46 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Node / Frontend dependencies and builds
+node_modules/
+dist/
+dist-ssr/
 *.local
+.env*.local
 
-# Editor directories and files
+# Python / PyInstaller artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.manifest
+*.spec
+build/
+../sinova-backend/data/
+../sinova-backend/app/dist/
+../sinova-backend/app/build/
+../sinova-backend/app/entrypoint.py
+../sinova-backend/app/entrypoint.spec
+
+# Python environments
+.venv/
+venv/
+env/
+ENV/
+
+# Rust & Tauri build outputs and heavy sidecars
+target/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/
+
+# Editor & OS directories
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-sinova-backend/data/exports/
-
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class

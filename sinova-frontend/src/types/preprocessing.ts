@@ -179,7 +179,7 @@ export const initialOperations: PreprocessingOperation[] = [
     name: "Neural Destriping",
     shortName: "ring_filter_inr",
     category: "destriping",
-    description: `Unsupervised neural destriping model based on the paper "Ring Artifacts Removal Based on Implicit Neural Representation of Sinogram Data"(Shi et al., 2024). Computationally expensive and may take a while to run.`,
+    description: `Unsupervised neural destriping model based on the paper "Ring Artifacts Removal Based on Implicit Neural Representation of Sinogram Data"(Shi et al., 2024). Computationally expensive and may take a while to run, especially without CUDA acceleration.`,
     enabled: false,
     scope: "sinogram",
     parameters: {

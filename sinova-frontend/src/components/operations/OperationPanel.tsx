@@ -1,5 +1,4 @@
 import {
-  Accordion,
   ActionIcon,
   Button,
   Divider,
@@ -460,34 +459,6 @@ export function OperationPanel() {
             <DeferredNumberInput
               decimalScale={2}
               value={Number(params.strength ?? 0.6)}
-              onCommit={(val) => updateParam("strength", val)}
-            />
-          </div>
-        </>
-      )}
-
-      {/* NEURAL DESTRIPING */}
-      {operation.id === "neural" && (
-        <>
-          <div>
-            <FieldLabel
-              label="Neural Model"
-              tooltip="Pretrained deep learning model architecture for ring artifact removal."
-            />
-            <Select
-              data={["Default", "DeepStriping-v1", "U-Net-Tomo"]}
-              value={String(params.model ?? "Default")}
-              onChange={(next) => next && updateParam("model", next)}
-            />
-          </div>
-          <div>
-            <FieldLabel
-              label="Model Strength"
-              tooltip="Blending weight between original and deep learning corrected sinograms."
-            />
-            <DeferredNumberInput
-              decimalScale={2}
-              value={Number(params.strength ?? 0.5)}
               onCommit={(val) => updateParam("strength", val)}
             />
           </div>
