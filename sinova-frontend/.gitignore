@@ -24,8 +24,7 @@ build/
 ../sinova-backend/data/
 ../sinova-backend/app/dist/
 ../sinova-backend/app/build/
-../sinova-backend/app/entrypoint.py
-../sinova-backend/app/entrypoint.spec
+../sinova-backend/app/patch_ctypes_hook.py
 
 # Python environments
 .venv/

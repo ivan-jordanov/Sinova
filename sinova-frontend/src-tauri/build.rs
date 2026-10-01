@@ -6,12 +6,20 @@ use std::process::Command;
 fn kill_lingering_sidecars() {
     #[cfg(target_os = "windows")]
     {
-        // Terminate orphaned sidecar processes holding DLL locks before compilation starts
         let _ = Command::new("taskkill")
             .args(["/F", "/IM", "sinova-backend*"])
             .output();
         let _ = Command::new("taskkill")
             .args(["/F", "/IM", "main.exe"])
+            .output();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = Command::new("pkill")
+            .args(["-f", "sinova-backend"])
+            .output();
+        let _ = Command::new("pkill")
+            .args(["-f", "main"])
             .output();
     }
 }
@@ -27,7 +35,6 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result
         if ty.is_dir() {
             copy_dir_all(&src_path, &dst_path)?;
         } else {
-            // Check file metadata before copying to prevent unnecessary writes to locked files
             let should_copy = match (fs::metadata(&src_path), fs::metadata(&dst_path)) {
                 (Ok(src_meta), Ok(dst_meta)) => {
                     src_meta.len() != dst_meta.len()
@@ -47,13 +54,9 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result
 }
 
 fn main() {
-    // 1. Force-kill background processes to release DLL file locks
     kill_lingering_sidecars();
-
-    // 2. Execute standard Tauri build
     tauri_build::build();
 
-    // 3. Incrementally copy _internal into target/debug or target/release
     if let Ok(profile) = env::var("PROFILE") {
         let target_dir = PathBuf::from("target").join(profile);
         let src_internal = PathBuf::from("binaries/_internal");

@@ -16,7 +16,6 @@ pub fn run() {
                 Ok(cmd) => {
                     let (mut rx, child) = cmd.spawn().expect("Failed to spawn backend sidecar");
                     
-                    // Save sidecar PID for teardown on exit
                     if let Ok(mut lock) = sidecar_pid_clone.lock() {
                         *lock = Some(child.pid());
                     }
@@ -58,6 +57,12 @@ pub fn run() {
                         {
                             let _ = std::process::Command::new("taskkill")
                                 .args(["/PID", &pid.to_string(), "/T", "/F"])
+                                .output();
+                        }
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            let _ = std::process::Command::new("kill")
+                                .args(["-9", &pid.to_string()])
                                 .output();
                         }
                     }
