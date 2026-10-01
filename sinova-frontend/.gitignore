@@ -25,6 +25,11 @@ build/
 ../sinova-backend/app/dist/
 ../sinova-backend/app/build/
 ../sinova-backend/app/patch_ctypes_hook.py
+# PyInstaller build artifacts
+../sinova-backend/build/
+../sinova-backend/dist/
+../sinova-backend/*.spec
+
 
 # Python environments
 .venv/
